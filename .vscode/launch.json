@@ -1,0 +1,36 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug CodeAtlas MCP",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/packages/mcp-server/src/main.ts",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "CODEATLAS_CONFIG": "${workspaceFolder}/config/codeatlas.example.json"
+      },
+      "console": "integratedTerminal",
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    },
+    {
+      "name": "Run CodeAtlas Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/vscode-extension"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/packages/vscode-extension/dist/**/*.cjs"
+      ],
+      "preLaunchTask": "codeatlas: build extension"
+    }
+  ]
+}

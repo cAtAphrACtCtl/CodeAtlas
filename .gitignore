@@ -1,0 +1,8 @@
+node_modules/
+dist/
+
+data/indexes/*
+data/metadata/*.local.json
+data/registry/*.local.json
+
+!.gitkeep

@@ -1,0 +1,30 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "codeatlas: build extension",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "run",
+        "extension:build"
+      ],
+      "group": "build",
+      "problemMatcher": [
+        "$tsc"
+      ]
+    },
+    {
+      "label": "codeatlas: watch extension",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "run",
+        "extension:watch"
+      ],
+      "isBackground": true,
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

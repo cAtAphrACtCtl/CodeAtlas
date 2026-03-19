@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "codeAtlas": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/node_modules/tsx/dist/cli.mjs",
+        "${workspaceFolder}/packages/mcp-server/src/main.ts"
+      ],
+      "env": {
+        "CODEATLAS_CONFIG": "${workspaceFolder}/config/codeatlas.example.json"
+      }
+    }
+  }
+}
