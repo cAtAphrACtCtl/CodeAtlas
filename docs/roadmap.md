@@ -2,7 +2,7 @@
 
 ## Phase 1: Local Lexical Retrieval
 
-Status: scaffolded in this repository
+Status: implemented for the core MCP flow and verified locally with `npm test` and `npm run build`
 
 Deliverables:
 
@@ -21,6 +21,16 @@ Exit criteria:
 - code can be searched through MCP using `code_search`
 - source can be read with `read_source`
 - repository status can be refreshed independently
+
+Current assessment:
+
+- the repository registry, metadata store, index coordination, lexical search path, and MCP handlers are present in the current codebase
+- existing unit and integration tests cover the phase 1 lexical flow and stable placeholder contracts for future search modes
+- the current implementation is suitable for local iteration on the retrieval surface without changing the MCP contract
+
+Recommended next action:
+
+- start Phase 2 symbol-aware retrieval behind the existing transport boundary, because the phase 1 lexical path is already buildable, testable, and stable enough to serve as the baseline
 
 ## Phase 2: Symbol-Aware Retrieval
 
