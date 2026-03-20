@@ -30,7 +30,37 @@
       "outFiles": [
         "${workspaceFolder}/packages/vscode-extension/dist/**/*.cjs"
       ],
-      "preLaunchTask": "codeatlas: build extension"
+      "preLaunchTask": "codeatlas: watch extension"
+    },
+    {
+      "name": "Attach CodeAtlas MCP Watch",
+      "type": "node",
+      "request": "attach",
+      "port": 9230,
+      "restart": true,
+      "timeout": 30000,
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "preLaunchTask": "codeatlas: watch mcp"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "CodeAtlas Dev: Extension + MCP",
+      "configurations": [
+        "Run CodeAtlas Extension",
+        "Debug CodeAtlas MCP"
+      ],
+      "stopAll": true
+    },
+    {
+      "name": "CodeAtlas Dev: Full Stack Watch",
+      "configurations": [
+        "Run CodeAtlas Extension",
+        "Attach CodeAtlas MCP Watch"
+      ],
+      "stopAll": true
     }
   ]
 }

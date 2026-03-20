@@ -2,6 +2,24 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "codeatlas: full-stack watch",
+      "dependsOn": [
+        "codeatlas: watch extension",
+        "codeatlas: watch mcp"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
+      "label": "codeatlas: watch extension",
+      "dependsOn": [
+        "codeatlas: watch extension types",
+        "codeatlas: watch extension bundle"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
       "label": "codeatlas: build extension",
       "type": "shell",
       "command": "npm",
@@ -15,16 +33,101 @@
       ]
     },
     {
-      "label": "codeatlas: watch extension",
+      "label": "codeatlas: build server",
       "type": "shell",
       "command": "npm",
       "args": [
         "run",
-        "extension:watch"
+        "build:server"
+      ],
+      "group": "build",
+      "problemMatcher": [
+        "$tsc"
+      ]
+    },
+    {
+      "label": "codeatlas: watch extension types",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "run",
+        "watch:types",
+        "--workspace",
+        "codeatlas-vscode-extension"
       ],
       "isBackground": true,
       "group": "build",
-      "problemMatcher": []
+      "problemMatcher": [
+        "$tsc-watch"
+      ]
+    },
+    {
+      "label": "codeatlas: watch extension bundle",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "run",
+        "watch:bundle",
+        "--workspace",
+        "codeatlas-vscode-extension"
+      ],
+      "isBackground": true,
+      "group": "build",
+      "problemMatcher": [
+        {
+          "owner": "custom",
+          "fileLocation": [
+            "relative",
+            "${workspaceFolder}/packages/vscode-extension"
+          ],
+          "pattern": [
+            {
+              "regexp": "^✘ \\[ERROR\\] (.+)$",
+              "message": 1
+            },
+            {
+              "regexp": "^    (.+):(\\d+):(\\d+):$",
+              "file": 1,
+              "line": 2,
+              "column": 3
+            }
+          ],
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": "^\\[watch\\] build started$",
+            "endsPattern": "^\\[watch\\] build finished$"
+          }
+        }
+      ]
+    },
+    {
+      "label": "codeatlas: watch mcp",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "run",
+        "mcp:watch"
+      ],
+      "isBackground": true,
+      "group": "build",
+      "problemMatcher": [
+        {
+          "owner": "custom",
+          "fileLocation": [
+            "relative",
+            "${workspaceFolder}"
+          ],
+          "pattern": {
+            "regexp": "^(.*)$",
+            "message": 1
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": ".*",
+            "endsPattern": "^CodeAtlas MCP server ready\\.$"
+          }
+        }
+      ]
     }
   ]
 }

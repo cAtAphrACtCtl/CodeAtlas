@@ -17,6 +17,7 @@ async function main(): Promise<void> {
   const server = createCodeAtlasMcpServer(services.config, handlers);
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  console.error("CodeAtlas MCP server ready.");
 }
 
 main().catch((error) => {

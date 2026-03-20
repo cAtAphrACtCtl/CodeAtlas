@@ -124,7 +124,29 @@ npm start
 npm run dev
 ```
 
-### 5. Optional configuration
+### 5. Develop the VS Code extension
+
+Build once:
+
+```bash
+npm run extension:build
+```
+
+Run continuous watch mode:
+
+```bash
+npm run extension:watch
+```
+
+Run the full-stack watch loop from the terminal:
+
+```bash
+npm run dev:fullstack
+```
+
+In VS Code, use the `Run CodeAtlas Extension` launch configuration for extension-only work, `CodeAtlas Dev: Extension + MCP` for one-shot debugging, or `CodeAtlas Dev: Full Stack Watch` for a watch-based inner loop.
+
+### 6. Optional configuration
 
 By default, CodeAtlas uses internal defaults rooted at the repository directory. You can override them with:
 
@@ -165,6 +187,26 @@ The repository includes basic unit and integration scaffolding using the Node te
 ```bash
 npm test
 ```
+
+## Debugging
+
+For a smooth local development loop in VS Code:
+
+- `Run CodeAtlas Extension` starts the extension host and keeps the extension bundle in watch mode
+- `Debug CodeAtlas MCP` starts the MCP server from source with `tsx`
+- `CodeAtlas Dev: Extension + MCP` launches both together
+- `Attach CodeAtlas MCP Watch` attaches the debugger to a watched MCP server on port `9230`
+- `CodeAtlas Dev: Full Stack Watch` keeps the extension bundle and MCP server in watch mode while attaching debuggers where possible
+
+Available development tasks:
+
+- `codeatlas: build server`
+- `codeatlas: build extension`
+- `codeatlas: watch extension`
+- `codeatlas: watch mcp`
+- `codeatlas: full-stack watch`
+
+The workspace also recommends the `connor4312.esbuild-problem-matchers` extension so esbuild watch errors surface cleanly in the Problems panel.
 
 ## Next Documents
 
