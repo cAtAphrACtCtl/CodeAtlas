@@ -10,7 +10,7 @@ Its goal is to provide fast, local-first code search and repository context retr
 - Keep indexing and storage fully local
 - Expose search and source-reading capabilities through MCP
 - Work well with GitHub Copilot and future custom skills
-- Start with lexical retrieval and be extensible to hybrid retrieval later
+- Start with lexical retrieval, add symbol-aware retrieval early, and remain extensible to hybrid retrieval later
 
 ## Non-Goals
 
@@ -25,15 +25,19 @@ Phase 1 focuses on a local lexical code retrieval platform.
 
 Core capabilities:
 - Register and manage multiple local repositories
-- Build and refresh local indexes
+- Build and refresh local lexical index state
 - Search code across repositories
 - Read source file ranges
 - Return structured search results for Copilot agents through MCP
 
+Current implementation notes:
+- The repository already contains a bootstrap lexical path using ripgrep with a naive fallback for development.
+- The target lexical indexing direction is Zoekt, not a custom in-house lexical engine.
+- Symbol-aware retrieval has already started with a local TS/JS symbol indexing slice.
+
 ## Future Phase 2+ Scope
 
 Future phases may add:
-- Symbol-aware retrieval
 - Chunk-based indexing
 - Local embeddings
 - Hybrid lexical + semantic retrieval
@@ -52,14 +56,14 @@ Main components:
 
 Recommended phase 1 architecture:
 - Lexical search backend: Zoekt
-- Metadata store: SQLite
+- Metadata store: JSON initially, SQLite only if operational needs grow
 - MCP server: Node.js or Python
 - Deployment: local machine, optionally WSL2 for indexing
 
 ## High-Level Flow
 
 1. Repositories are registered in the local registry
-2. The index coordinator builds or refreshes local indexes
+2. The index coordinator builds or refreshes Zoekt lexical indexes and local symbol indexes
 3. MCP tools expose search and source access
 4. GitHub Copilot calls MCP tools
 5. Copilot reads results and performs analysis
@@ -99,23 +103,23 @@ Suggested structure:
 
 Phase 1 tools:
 - list_repos
+- register_repo
 - code_search
 - read_source
 - get_index_status
+- refresh_repo
+- find_symbol
 
 Future tools:
-- find_symbol
 - semantic_search
 - hybrid_search
 - rebuild_index
-- refresh_repo
 
 ## Search Result Contract
 
 Every search result should include:
 - repo
 - path
-- branch
 - start_line
 - end_line
 - snippet
@@ -124,6 +128,7 @@ Every search result should include:
 
 Where source_type initially is:
 - lexical
+- symbol
 
 In future phases source_type may also be:
 - semantic
@@ -147,20 +152,25 @@ In future phases source_type may also be:
 
 ## Delivery Plan
 
-Phase 1:
+Phase 1 foundation:
 - Repository registry
-- Zoekt integration
-- SQLite metadata
-- MCP server with code_search and read_source
+- JSON-backed metadata
+- MCP server with code_search, read_source, get_index_status, refresh_repo
 - Basic developer scripts
 - Bootstrap documentation
 
+Phase 1.5:
+- Zoekt integration as the default lexical indexing engine
+- Per-repository Zoekt refresh flow
+- Performance validation for large repositories
+
 Phase 2:
 - Symbol extraction
-- Chunking model
 - Better result shaping
+- Broader symbol support and ranking
 
 Phase 3:
+- Chunking model
 - Local embeddings
 - Vector index
 - semantic_search
@@ -177,3 +187,4 @@ A successful phase 1 must:
 - search the 10GB repository fast enough for interactive Copilot use
 - allow GitHub Copilot to call MCP tools and fetch source ranges
 - keep architecture extensible for hybrid retrieval later
+- keep the MCP contract stable while the lexical backend moves from bootstrap ripgrep to Zoekt

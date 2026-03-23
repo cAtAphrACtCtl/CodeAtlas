@@ -6,6 +6,16 @@ export const searchRequestSchema = {
   limit: z.number().int().positive().optional(),
 };
 
+export const findSymbolSchema = {
+  query: z.string().min(1),
+  repos: z.array(z.string().min(1)).optional(),
+  kinds: z
+    .array(z.enum(["class", "enum", "function", "interface", "method", "property", "type_alias", "variable"]))
+    .optional(),
+  limit: z.number().int().positive().optional(),
+  exact: z.boolean().optional(),
+};
+
 export const registerRepoSchema = {
   name: z.string().min(1),
   root_path: z.string().min(1),

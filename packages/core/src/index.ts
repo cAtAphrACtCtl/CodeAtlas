@@ -13,4 +13,7 @@ export * from "./registry/repository-registry.js";
 export * from "./search/lexical-search-backend.js";
 export * from "./search/ripgrep-lexical-search-backend.js";
 export * from "./search/search-service.js";
+export * from "./search/symbol-extractor.js";
+export * from "./search/symbol-index-store.js";
+export * from "./search/symbol-search-backend.js";
 export * from "./runtime.js";

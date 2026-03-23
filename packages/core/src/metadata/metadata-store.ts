@@ -5,6 +5,9 @@ export interface RepositoryIndexStatus {
   backend: string;
   state: IndexState;
   lastIndexedAt?: string;
+  symbolState?: IndexState;
+  symbolLastIndexedAt?: string;
+  symbolCount?: number;
   detail?: string;
 }
 

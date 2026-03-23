@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import type { CodeAtlasConfig } from "../../../core/src/configuration/config.js";
 import {
+  findSymbolSchema,
   getIndexStatusSchema,
   readSourceSchema,
   refreshRepoSchema,
@@ -45,6 +46,16 @@ export function createCodeAtlasMcpServer(
     { title: "Code search", readOnlyHint: true },
     async (request) => {
       return handlers.codeSearch(request);
+    },
+  );
+
+  server.tool(
+    "find_symbol",
+    "Search locally indexed symbols across registered repositories using the phase 2 symbol-aware retrieval path.",
+    findSymbolSchema,
+    { title: "Find symbol", readOnlyHint: true },
+    async (request) => {
+      return handlers.findSymbol(request);
     },
   );
 

@@ -32,10 +32,10 @@ These layers own how data is stored locally, not how it is searched or exposed t
 Handled by:
 
 - index coordinator
-- lexical backend preparation
+- lexical index preparation and refresh
+- current symbol extraction pipeline
 - future chunking pipelines
 - future embedding pipelines
-- future symbol extraction
 
 This layer decides when and how artifacts are built or refreshed.
 
@@ -78,6 +78,8 @@ Includes:
 - metadata store
 - source reader
 - lexical search backend abstraction
+- symbol extraction and symbol index storage
+- symbol-aware search backend
 - index coordination
 - search services
 
@@ -138,7 +140,8 @@ Coordinates refresh and readiness across repositories.
 
 Responsibilities:
 
-- prepare or refresh lexical search backend state
+- prepare or refresh lexical index state
+- prepare or refresh local symbol index state
 - update metadata store status
 - isolate per-repository refresh from other repositories
 
@@ -146,19 +149,31 @@ This design matters for the 10GB repository requirement because large repositori
 
 ### Lexical Search Backend Abstraction
 
-Phase 1 uses a `LexicalSearchBackend` interface. The initial implementation is local ripgrep execution with a naive filesystem fallback.
+CodeAtlas keeps a `LexicalSearchBackend` interface so the retrieval layer is insulated from the concrete lexical engine. The current repository includes a ripgrep-backed bootstrap implementation for local development, but the intended production lexical path is Zoekt-backed indexing and lookup.
 
 Responsibilities:
 
+- build or refresh lexical index state for a repository
 - return lexical matches for a repository
 - remain independent from MCP transport
-- permit backend replacement with Zoekt or another local engine later
+- keep the engine choice internal to core services
 
 Why this matters:
 
-- ripgrep gets phase 1 usable quickly
-- a dedicated local indexer such as Zoekt can be introduced later behind the same abstraction
+- the bootstrap ripgrep path keeps development unblocked
+- Zoekt provides the intended prebuilt lexical index for large repositories
 - the `SearchService` and MCP tools do not change
+
+### Zoekt Integration Direction
+
+The lexical indexing decision is to use Zoekt directly rather than build a custom lexical engine inside CodeAtlas.
+
+That means:
+
+- `refresh_repo` should ultimately trigger a Zoekt repository index build or refresh
+- `code_search` should ultimately query Zoekt-backed lexical indexes
+- metadata remains owned by CodeAtlas even when lexical index files are produced by Zoekt
+- the ripgrep path is a bootstrap and fallback implementation, not the long-term primary backend
 
 ### Source Reader
 
@@ -177,6 +192,7 @@ Exposes stable tool contracts:
 - `list_repos`
 - `register_repo`
 - `code_search`
+- `find_symbol`
 - `semantic_search`
 - `hybrid_search`
 - `read_source`
@@ -217,6 +233,7 @@ All retrieval paths converge on the same result shape:
 `source_type` is future-safe and already supports:
 
 - `lexical`
+- `symbol`
 - `semantic`
 - `hybrid`
 
@@ -230,8 +247,48 @@ Add a symbol extraction pipeline and symbol index behind retrieval services.
 
 Impact:
 
-- new internal services only
-- MCP tool contracts unchanged
+- implemented as local TypeScript-powered symbol extraction for TS and JS codebases
+- adds `find_symbol` as a dedicated symbol lookup surface while preserving existing lexical contracts
+- existing lexical MCP contracts unchanged
+- symbol refresh should remain coordinated with the same repository refresh lifecycle used for Zoekt
+
+### Symbol Index Flow
+
+The current symbol-aware path has two main execution flows: indexing and lookup.
+
+```mermaid
+flowchart TD
+  A[Client calls refresh_repo] --> B[MCP server: refresh_repo tool]
+  B --> C[Handler: refreshRepo]
+  C --> D[IndexCoordinator.refreshRepository]
+  D --> E[RepositoryRegistry.getRepository]
+  D --> F[LexicalSearchBackend.prepareRepository]
+  D --> G[TypeScriptSymbolExtractor.extractRepository]
+  G --> H[Walk repository files]
+  H --> I[Filter to TS/JS extensions]
+  I --> J[Parse file with TypeScript AST]
+  J --> K[Extract declarations into SymbolRecord]
+  K --> L[FileSymbolIndexStore.setSymbols]
+  D --> M[MetadataStore.setIndexStatus]
+
+  N[Client calls find_symbol] --> O[MCP server: find_symbol tool]
+  O --> P[Handler: findSymbol]
+  P --> Q[SearchService.findSymbols]
+  Q --> R[IndexCoordinator.ensureReady]
+  R -->|not ready| D
+  R -->|ready| S[SymbolSearchBackend.searchRepository]
+  S --> T[FileSymbolIndexStore.getSymbols]
+  T --> U[Filter by kinds and name match]
+  U --> V[Score and sort symbol results]
+  V --> W[Return SymbolRecord results to MCP client]
+```
+
+Execution notes:
+
+- `refresh_repo` is the point where lexical index readiness and symbol index generation are performed together.
+- symbol extraction is file-based and currently only runs on `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`, `.mjs`, and `.cjs` files.
+- `find_symbol` does not re-parse the repository on every query; it reads the locally persisted symbol index and ranks matches from that cache.
+- `ensureReady` is the guard between lookup and indexing. If a repository has not been indexed yet, lookup will trigger the refresh path first.
 
 ### Phase 3: chunk-based indexing and local embeddings
 
@@ -253,6 +310,38 @@ Impact:
 - `SearchService` composes lexical and semantic candidates
 - MCP handlers still return the same shape
 
+## Agent Retrieval Strategy
+
+Agents should use the retrieval layers as complementary signals rather than treating any single layer as sufficient on its own.
+
+### Retrieval order by query shape
+
+When the agent already knows an exact code symbol name:
+
+- prefer `find_symbol` first to locate structured definitions
+- use `read_source` to ground the result in nearby code
+- use lexical search afterward only when the agent needs usages, related strings, or broader textual evidence
+
+When the agent knows an exact token or text string but it is not necessarily a code symbol:
+
+- prefer lexical retrieval through `code_search`
+- use the lexical backend to find exact matches for configuration keys, log text, error messages, SQL fragments, and protocol fields
+- use source reads to validate the match before drawing conclusions
+
+When the agent only has a vague natural-language intent:
+
+- prefer semantic retrieval first once `semantic_search` is implemented
+- treat semantic results as high-recall candidates rather than final answers
+- feed semantic candidates back into symbol or lexical retrieval for precise verification
+- use `read_source` as the final grounding step before the agent acts on the result
+
+### Design implications
+
+- semantic retrieval does not replace lexical retrieval; it expands recall when exact identifiers are unknown
+- symbol retrieval remains the highest-precision path for exact code entities
+- lexical retrieval remains the highest-confidence path for exact text matching
+- hybrid retrieval should combine semantic recall with lexical and symbol verification rather than bypassing those layers
+
 ## Large Repository Considerations
 
 For the up-to-10GB repository target, the architecture assumes:
@@ -260,6 +349,6 @@ For the up-to-10GB repository target, the architecture assumes:
 - repository-local refresh operations
 - no requirement to rebuild all repositories together
 - independent metadata and index state per repository
-- search backends that can avoid whole-workspace scans when upgraded to stronger local engines
+- a Zoekt-backed lexical engine that avoids whole-workspace scans at query time
 
-Phase 1 is intentionally conservative. It gets the public architecture right first so performance-specific backend swaps do not force transport redesign.
+The bootstrap implementation is intentionally conservative. It gets the public architecture right first so the move to Zoekt does not force transport redesign.

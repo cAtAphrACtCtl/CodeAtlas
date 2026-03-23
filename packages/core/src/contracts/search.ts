@@ -24,6 +24,39 @@ export interface SearchResponse {
   message?: string;
 }
 
+export type SymbolKind =
+  | "class"
+  | "enum"
+  | "function"
+  | "interface"
+  | "method"
+  | "property"
+  | "type_alias"
+  | "variable";
+
+export interface SymbolRecord {
+  repo: string;
+  path: string;
+  name: string;
+  kind: SymbolKind;
+  start_line: number;
+  end_line: number;
+  container_name?: string;
+}
+
+export interface SymbolSearchRequest {
+  query: string;
+  repos?: string[];
+  kinds?: SymbolKind[];
+  limit?: number;
+  exact?: boolean;
+}
+
+export interface SymbolSearchResponse {
+  query: string;
+  results: SymbolRecord[];
+}
+
 export interface ReadSourceRequest {
   repo: string;
   path: string;

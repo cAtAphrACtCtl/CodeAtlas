@@ -1,4 +1,4 @@
-import type { ReadSourceRequest, SearchRequest } from "../../../core/src/contracts/search.js";
+import type { ReadSourceRequest, SearchRequest, SymbolSearchRequest } from "../../../core/src/contracts/search.js";
 import type { IndexCoordinator } from "../../../core/src/indexer/index-coordinator.js";
 import type { MetadataStore } from "../../../core/src/metadata/metadata-store.js";
 import type { SourceReader } from "../../../core/src/reader/source-reader.js";
@@ -54,6 +54,11 @@ export function createHandlers(dependencies: HandlerDependencies) {
 
     codeSearch: async (request: SearchRequest) => {
       const response = await dependencies.searchService.searchLexical(request);
+      return toToolResult(response);
+    },
+
+    findSymbol: async (request: SymbolSearchRequest) => {
+      const response = await dependencies.searchService.findSymbols(request);
       return toToolResult(response);
     },
 

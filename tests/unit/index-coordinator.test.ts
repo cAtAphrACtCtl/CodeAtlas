@@ -1,15 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import { IndexCoordinator } from "../../packages/core/src/indexer/index-coordinator.js";
 import type { MetadataStore } from "../../packages/core/src/metadata/metadata-store.js";
 import type { RepositoryRegistry } from "../../packages/core/src/registry/repository-registry.js";
 import type { LexicalSearchBackend } from "../../packages/core/src/search/lexical-search-backend.js";
+import { FileSymbolIndexStore } from "../../packages/core/src/search/symbol-index-store.js";
+import { TypeScriptSymbolExtractor } from "../../packages/core/src/search/symbol-extractor.js";
 
 test("IndexCoordinator refreshes repository status independently", async () => {
+  const tempRepoRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-repo-"));
+  await mkdir(path.join(tempRepoRoot, "src"), { recursive: true });
+  await writeFile(path.join(tempRepoRoot, "src", "repo-a.ts"), "export function repoA() { return true; }\n", "utf8");
+
   const repository = {
     name: "repo-a",
-    rootPath: "C:/repos/repo-a",
+    rootPath: tempRepoRoot,
     registeredAt: new Date().toISOString(),
   };
 
@@ -54,11 +63,19 @@ test("IndexCoordinator refreshes repository status independently", async () => {
     },
   };
 
-  const coordinator = new IndexCoordinator(registry, metadataStore, backend);
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-symbols-"));
+  const coordinator = new IndexCoordinator(
+    registry,
+    metadataStore,
+    backend,
+    new TypeScriptSymbolExtractor(),
+    new FileSymbolIndexStore(tempRoot),
+  );
   const refreshed = await coordinator.refreshRepository("repo-a");
   const statuses = await coordinator.getStatus();
 
   assert.equal(refreshed.state, "ready");
+  assert.equal(refreshed.symbolState, "ready");
   assert.equal(statuses.length, 1);
   assert.equal(statuses[0]?.repo, "repo-a");
   assert.equal(statuses[0]?.backend, "mock");

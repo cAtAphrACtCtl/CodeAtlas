@@ -1,15 +1,23 @@
 import type { CodeAtlasConfig } from "../configuration/config.js";
 import { CodeAtlasError } from "../common/errors.js";
-import type { SearchRequest, SearchResponse, SearchResult } from "../contracts/search.js";
+import type {
+  SearchRequest,
+  SearchResponse,
+  SearchResult,
+  SymbolSearchRequest,
+  SymbolSearchResponse,
+} from "../contracts/search.js";
 import type { IndexCoordinator } from "../indexer/index-coordinator.js";
 import type { RepositoryRecord, RepositoryRegistry } from "../registry/repository-registry.js";
 import type { LexicalSearchBackend } from "./lexical-search-backend.js";
+import { SymbolSearchBackend, scoreSymbol } from "./symbol-search-backend.js";
 
 export class SearchService {
   constructor(
     private readonly registry: RepositoryRegistry,
     private readonly indexCoordinator: IndexCoordinator,
     private readonly lexicalBackend: LexicalSearchBackend,
+    private readonly symbolSearchBackend: SymbolSearchBackend,
     private readonly searchConfig: CodeAtlasConfig["search"],
   ) {}
 
@@ -63,6 +71,30 @@ export class SearchService {
       results: [],
       not_implemented: true,
       message: "TODO: hybrid_search will merge lexical and semantic candidates without changing the MCP tool contract.",
+    };
+  }
+
+  async findSymbols(request: SymbolSearchRequest): Promise<SymbolSearchResponse> {
+    const repositories = await this.resolveRepositories(request.repos);
+    const limit = this.resolveLimit(request.limit);
+
+    await Promise.all(repositories.map((repository) => this.indexCoordinator.ensureReady(repository.name)));
+
+    const results = await Promise.all(
+      repositories.map((repository) =>
+        this.symbolSearchBackend.searchRepository(repository.name, {
+          ...request,
+          limit,
+        }),
+      ),
+    );
+
+    return {
+      query: request.query,
+      results: results
+        .flat()
+        .sort((left, right) => scoreSymbol(right, request.query, request.exact ?? false) - scoreSymbol(left, request.query, request.exact ?? false))
+        .slice(0, limit),
     };
   }
 

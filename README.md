@@ -21,11 +21,16 @@ The repository now follows a package-oriented architecture:
 - `packages/mcp-server`: MCP transport and tool registration
 - `packages/vscode-extension`: VS Code command surface for repository discovery and configuration management
 
-Phase 1 remains a TypeScript MCP server with these components:
+CodeAtlas now includes a first slice of Phase 2 symbol-aware retrieval on top of the phase 1 lexical foundation.
+
+Current components:
 
 - Repository registry: local JSON-backed registry of repositories
 - Index coordinator: orchestration point for refresh, readiness, and status
 - Lexical backend abstraction: phase 1 uses a local ripgrep-backed search path with a naive local fallback
+- Symbol extraction pipeline: local TypeScript-powered extraction for TS and JS repositories
+- Symbol index store: local JSON-backed symbol metadata per repository
+- Symbol search backend: local symbol lookup with exact, prefix, and substring matching
 - Source reader: reads source ranges from registered repositories
 - Metadata store: local JSON-backed index status store
 - MCP transport: stdio server exposing stable tool contracts
@@ -41,6 +46,7 @@ Implemented now:
 - `list_repos`
 - `register_repo`
 - `code_search`
+- `find_symbol`
 - `read_source`
 - `get_index_status`
 - `refresh_repo`
@@ -71,6 +77,7 @@ Every search result uses the same structured shape:
 Supported `source_type` values:
 
 - `lexical`
+- `symbol`
 - `semantic`
 - `hybrid`
 
@@ -179,6 +186,20 @@ The contract already reserves:
 - `source_type = semantic | hybrid`
 
 The future hybrid design can add semantic candidates and reranking behind the existing `SearchService` and `MetadataStore` seams. The MCP transport layer remains unchanged.
+
+### What phase 2 adds now
+
+The current symbol-aware slice indexes top-level and nested TypeScript and JavaScript declarations locally during repository refresh. That enables symbol-oriented lookup through the new `find_symbol` MCP tool without changing the existing lexical result shape or the reserved semantic and hybrid contracts.
+
+### Agent retrieval policy
+
+For agent-style retrieval, CodeAtlas treats symbol, lexical, and semantic search as complementary layers.
+
+- when an agent already knows an exact symbol name, it should prefer `find_symbol` first, then use `read_source` to verify the code
+- when an agent knows an exact text token that is not necessarily a symbol, it should prefer lexical retrieval through `code_search`
+- when an agent only has a vague natural-language intent, it should use `semantic_search` as a recall layer once implemented, then verify candidates through symbol or lexical retrieval before acting on them
+
+This means semantic retrieval is intended to expand recall, while symbol and lexical retrieval remain the precision layers used to ground agent behavior.
 
 ## Tests
 

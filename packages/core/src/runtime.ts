@@ -7,6 +7,9 @@ import { FileSystemSourceReader } from "./reader/filesystem-source-reader.js";
 import { FileRepositoryRegistry } from "./registry/file-repository-registry.js";
 import { RipgrepLexicalSearchBackend } from "./search/ripgrep-lexical-search-backend.js";
 import { SearchService } from "./search/search-service.js";
+import { SymbolSearchBackend } from "./search/symbol-search-backend.js";
+import { FileSymbolIndexStore } from "./search/symbol-index-store.js";
+import { TypeScriptSymbolExtractor } from "./search/symbol-extractor.js";
 
 export interface CreateCodeAtlasServicesOptions {
   baseDir?: string;
@@ -20,6 +23,9 @@ export interface CodeAtlasServices {
   registry: FileRepositoryRegistry;
   metadataStore: FileMetadataStore;
   lexicalBackend: RipgrepLexicalSearchBackend;
+  symbolExtractor: TypeScriptSymbolExtractor;
+  symbolIndexStore: FileSymbolIndexStore;
+  symbolSearchBackend: SymbolSearchBackend;
   indexCoordinator: IndexCoordinator;
   sourceReader: FileSystemSourceReader;
   searchService: SearchService;
@@ -35,9 +41,12 @@ export async function createCodeAtlasServices(
   const registry = new FileRepositoryRegistry(config.registryPath);
   const metadataStore = new FileMetadataStore(config.metadataPath);
   const lexicalBackend = new RipgrepLexicalSearchBackend(config.lexicalBackend, config.search.maxBytesPerFile);
-  const indexCoordinator = new IndexCoordinator(registry, metadataStore, lexicalBackend);
+  const symbolExtractor = new TypeScriptSymbolExtractor();
+  const symbolIndexStore = new FileSymbolIndexStore(config.indexRoot);
+  const symbolSearchBackend = new SymbolSearchBackend(symbolIndexStore);
+  const indexCoordinator = new IndexCoordinator(registry, metadataStore, lexicalBackend, symbolExtractor, symbolIndexStore);
   const sourceReader = new FileSystemSourceReader();
-  const searchService = new SearchService(registry, indexCoordinator, lexicalBackend, config.search);
+  const searchService = new SearchService(registry, indexCoordinator, lexicalBackend, symbolSearchBackend, config.search);
 
   return {
     config,
@@ -46,6 +55,9 @@ export async function createCodeAtlasServices(
     registry,
     metadataStore,
     lexicalBackend,
+    symbolExtractor,
+    symbolIndexStore,
+    symbolSearchBackend,
     indexCoordinator,
     sourceReader,
     searchService,

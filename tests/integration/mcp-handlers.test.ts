@@ -11,6 +11,9 @@ import { FileSystemSourceReader } from "../../packages/core/src/reader/filesyste
 import { FileRepositoryRegistry } from "../../packages/core/src/registry/file-repository-registry.js";
 import { RipgrepLexicalSearchBackend } from "../../packages/core/src/search/ripgrep-lexical-search-backend.js";
 import { SearchService } from "../../packages/core/src/search/search-service.js";
+import { FileSymbolIndexStore } from "../../packages/core/src/search/symbol-index-store.js";
+import { SymbolSearchBackend } from "../../packages/core/src/search/symbol-search-backend.js";
+import { TypeScriptSymbolExtractor } from "../../packages/core/src/search/symbol-extractor.js";
 
 test("MCP handlers expose phase 1 lexical search and source reading", async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-"));
@@ -22,6 +25,10 @@ test("MCP handlers expose phase 1 lexical search and source reading", async () =
   await writeFile(
     path.join(repositoryRoot, "src", "feature.ts"),
     [
+      "export interface AtlasConfig {",
+      "  name: string;",
+      "}",
+      "",
       "export function buildAtlas() {",
       "  return 'code atlas';",
       "}",
@@ -40,9 +47,12 @@ test("MCP handlers expose phase 1 lexical search and source reading", async () =
     },
     256 * 1024,
   );
-  const indexCoordinator = new IndexCoordinator(registry, metadataStore, backend);
+  const symbolIndexStore = new FileSymbolIndexStore(path.join(tempRoot, "indexes"));
+  const symbolExtractor = new TypeScriptSymbolExtractor();
+  const symbolSearchBackend = new SymbolSearchBackend(symbolIndexStore);
+  const indexCoordinator = new IndexCoordinator(registry, metadataStore, backend, symbolExtractor, symbolIndexStore);
   const sourceReader = new FileSystemSourceReader();
-  const searchService = new SearchService(registry, indexCoordinator, backend, {
+  const searchService = new SearchService(registry, indexCoordinator, backend, symbolSearchBackend, {
     defaultLimit: 20,
     maxLimit: 100,
     maxBytesPerFile: 256 * 1024,
@@ -77,16 +87,34 @@ test("MCP handlers expose phase 1 lexical search and source reading", async () =
   assert.equal(searchPayload.results[0]?.repo, "sample");
   assert.equal(searchPayload.results[0]?.path, "src/feature.ts");
 
+  const symbolResponse = await handlers.findSymbol({
+    query: "buildAtlas",
+    repos: ["sample"],
+    exact: true,
+    limit: 5,
+  });
+
+  const symbolPayload = symbolResponse.structuredContent as {
+    results: Array<{ name: string; kind: string; path: string; start_line: number; end_line: number }>;
+  };
+
+  assert.equal(symbolPayload.results.length, 1);
+  assert.equal(symbolPayload.results[0]?.name, "buildAtlas");
+  assert.equal(symbolPayload.results[0]?.kind, "function");
+  assert.equal(symbolPayload.results[0]?.path, "src/feature.ts");
+  assert.equal(symbolPayload.results[0]?.start_line, 5);
+  assert.equal(symbolPayload.results[0]?.end_line, 7);
+
   const readResponse = await handlers.readSource({
     repo: "sample",
     path: "src/feature.ts",
-    start_line: 1,
-    end_line: 2,
+    start_line: 5,
+    end_line: 6,
   });
 
   const readPayload = readResponse.structuredContent as { content: string; start_line: number; end_line: number };
 
-  assert.equal(readPayload.start_line, 1);
-  assert.equal(readPayload.end_line, 2);
+  assert.equal(readPayload.start_line, 5);
+  assert.equal(readPayload.end_line, 6);
   assert.match(readPayload.content, /buildAtlas/);
 });

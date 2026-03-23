@@ -2,17 +2,21 @@ import { CodeAtlasError } from "../common/errors.js";
 import type { MetadataStore, RepositoryIndexStatus } from "../metadata/metadata-store.js";
 import type { RepositoryRegistry } from "../registry/repository-registry.js";
 import type { LexicalSearchBackend } from "../search/lexical-search-backend.js";
+import { TypeScriptSymbolExtractor } from "../search/symbol-extractor.js";
+import type { SymbolIndexStore } from "../search/symbol-index-store.js";
 
 export class IndexCoordinator {
   constructor(
     private readonly registry: RepositoryRegistry,
     private readonly metadataStore: MetadataStore,
     private readonly lexicalBackend: LexicalSearchBackend,
+    private readonly symbolExtractor: TypeScriptSymbolExtractor,
+    private readonly symbolIndexStore: SymbolIndexStore,
   ) {}
 
   async ensureReady(repoName: string): Promise<RepositoryIndexStatus> {
     const existing = await this.metadataStore.getIndexStatus(repoName);
-    if (existing?.state === "ready") {
+    if (existing?.state === "ready" && existing.symbolState === "ready") {
       return existing;
     }
 
@@ -25,7 +29,35 @@ export class IndexCoordinator {
       throw new CodeAtlasError(`Unknown repository: ${repoName}`);
     }
 
-    const status = await this.lexicalBackend.prepareRepository(repository);
+    const lexicalStatus = await this.lexicalBackend.prepareRepository(repository);
+    const indexedAt = new Date().toISOString();
+    let status: RepositoryIndexStatus = {
+      ...lexicalStatus,
+      symbolState: "ready",
+      symbolLastIndexedAt: indexedAt,
+      symbolCount: 0,
+    };
+
+    try {
+      const symbols = await this.symbolExtractor.extractRepository(repository);
+      await this.symbolIndexStore.setSymbols(repository.name, symbols);
+      status = {
+        ...status,
+        symbolState: "ready",
+        symbolLastIndexedAt: indexedAt,
+        symbolCount: symbols.length,
+      };
+    } catch (error) {
+      status = {
+        ...status,
+        symbolState: "error",
+        symbolLastIndexedAt: indexedAt,
+        detail: lexicalStatus.detail
+          ? `${lexicalStatus.detail}; symbol indexing failed: ${String(error)}`
+          : `symbol indexing failed: ${String(error)}`,
+      };
+    }
+
     await this.metadataStore.setIndexStatus(status);
     return status;
   }
