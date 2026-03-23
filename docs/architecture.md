@@ -175,6 +175,43 @@ That means:
 - metadata remains owned by CodeAtlas even when lexical index files are produced by Zoekt
 - the ripgrep path is a bootstrap and fallback implementation, not the long-term primary backend
 
+### Zoekt Backend Integration Plan
+
+The concrete integration plan is to keep the current lexical abstraction while changing the default implementation and runtime selection rules.
+
+Backend selection rules:
+
+- default lexical backend target: Zoekt
+- bootstrap fallback backend: ripgrep with naive scan fallback for development and troubleshooting
+- runtime should choose Zoekt when the configured Zoekt executables and index paths are available
+- runtime may fall back to the bootstrap backend only when configuration explicitly allows development fallback behavior
+
+Refresh flow:
+
+- `register_repo` continues to trigger `refresh_repo`
+- `refresh_repo` calls the active lexical backend to build or refresh lexical state for exactly one repository
+- in Zoekt mode, that lexical refresh step should invoke Zoekt indexing for the repository root and configured index path
+- after lexical refresh completes, the same repository refresh cycle should continue through symbol extraction and metadata updates
+
+Query flow:
+
+- `code_search` continues to call `SearchService.searchLexical`
+- `SearchService` remains unaware of whether lexical matches came from Zoekt or the bootstrap backend
+- in Zoekt mode, `searchRepository` should read ranked lexical hits from Zoekt output and normalize them into the existing result contract
+- in bootstrap mode, the existing ripgrep-backed implementation remains available for development use
+
+Configuration direction:
+
+- lexical backend configuration should move from a single ripgrep-only shape to a backend-specific configuration model
+- Zoekt configuration should include executable paths and index storage location
+- bootstrap fallback configuration should remain available but should be marked as development-only behavior
+
+Implementation boundary:
+
+- CodeAtlas owns repository registration, refresh orchestration, metadata, symbol indexing, semantic indexing, and MCP transport
+- Zoekt owns lexical index creation and lexical query execution
+- the lexical backend adapter inside CodeAtlas is responsible only for process invocation, output normalization, and error handling
+
 ### Source Reader
 
 Reads requested source ranges from registered repositories.

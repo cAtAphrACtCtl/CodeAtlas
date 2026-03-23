@@ -27,7 +27,7 @@ Current components:
 
 - Repository registry: local JSON-backed registry of repositories
 - Index coordinator: orchestration point for refresh, readiness, and status
-- Lexical backend abstraction: phase 1 uses a local ripgrep-backed search path with a naive local fallback
+- Lexical backend abstraction: target production path is Zoekt-backed indexing, while the current repository still includes a local ripgrep-backed bootstrap path for development
 - Symbol extraction pipeline: local TypeScript-powered extraction for TS and JS repositories
 - Symbol index store: local JSON-backed symbol metadata per repository
 - Symbol search backend: local symbol lookup with exact, prefix, and substring matching
@@ -167,7 +167,7 @@ The recommended architecture keeps the public MCP transport thin and pushes prod
 
 ### Why the lexical backend is abstracted now
 
-The MCP server depends on the `SearchService` contract, not on a specific lexical engine. Phase 1 can therefore start with ripgrep or another local lexical engine, while future phases can introduce:
+The MCP server depends on the `SearchService` contract, not on a specific lexical engine. CodeAtlas can therefore move from the bootstrap ripgrep path to a Zoekt-backed production lexical backend without changing the MCP tool names or the result envelope, while future phases can still introduce:
 
 - chunk stores
 - symbol tables
@@ -176,6 +176,21 @@ The MCP server depends on the `SearchService` contract, not on a specific lexica
 - hybrid rank fusion
 
 without changing the MCP tool names or the result envelope.
+
+### Zoekt backend integration
+
+The intended lexical direction is:
+
+- `refresh_repo` builds or refreshes a Zoekt index for one repository
+- `code_search` queries the Zoekt-backed lexical index
+- metadata remains owned by CodeAtlas even when the lexical index files are produced by Zoekt tooling
+- the existing ripgrep path remains only as a bootstrap and development fallback mode
+
+The expected backend behavior is:
+
+- production mode: Zoekt is the primary lexical engine
+- development fallback mode: if Zoekt is not configured or not available, the bootstrap ripgrep path can still serve local development
+- semantic and hybrid retrieval continue to depend on the same stable MCP contracts regardless of which lexical backend is active
 
 ### How hybrid retrieval fits later
 

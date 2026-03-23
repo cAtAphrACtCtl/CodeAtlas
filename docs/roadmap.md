@@ -35,6 +35,8 @@ Planned additions:
 - build and refresh Zoekt indexes per repository instead of relying on ad hoc query-time scanning
 - store Zoekt index readiness and refresh metadata through the existing metadata store
 - preserve the existing `code_search` MCP contract while swapping the underlying engine
+- introduce runtime backend selection so Zoekt is the default and ripgrep remains a development-only fallback path
+- update lexical backend configuration from a ripgrep-specific shape to a backend-specific configuration model
 
 Exit criteria:
 
@@ -42,6 +44,7 @@ Exit criteria:
 - `code_search` reads lexical results from Zoekt rather than direct ripgrep execution
 - large repository lexical search performance is validated against interactive MCP usage expectations
 - fallback scanning is reduced to a bootstrap or troubleshooting path rather than the primary backend
+- runtime behavior clearly distinguishes production Zoekt mode from development fallback mode
 
 ## Phase 2: Symbol-Aware Retrieval
 
@@ -105,6 +108,7 @@ Planned improvements across phases:
 - add benchmarking for very large repositories
 - add ranking evaluation datasets for retrieval quality
 - document and enforce an agent retrieval policy: exact symbols go to `find_symbol`, exact text goes to Zoekt-backed `code_search`, vague intent goes to `semantic_search` followed by lexical or symbol verification
+- document the Zoekt integration boundary so CodeAtlas does not drift into building a custom lexical indexing engine
 
 ## Lexical Backend Decision
 
