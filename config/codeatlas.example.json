@@ -3,10 +3,16 @@
   "metadataPath": "./data/metadata/index-status.local.json",
   "indexRoot": "./data/indexes",
   "lexicalBackend": {
-    "kind": "ripgrep",
-    "executable": "rg",
-    "fallbackToNaiveScan": true,
-    "contextLines": 2
+    "kind": "zoekt",
+    "zoektIndexExecutable": "zoekt-index",
+    "zoektSearchExecutable": "zoekt",
+    "indexRoot": "./data/indexes/zoekt",
+    "allowBootstrapFallback": true,
+    "bootstrapFallback": {
+      "kind": "ripgrep",
+      "executable": "rg",
+      "fallbackToNaiveScan": true
+    }
   },
   "search": {
     "defaultLimit": 20,

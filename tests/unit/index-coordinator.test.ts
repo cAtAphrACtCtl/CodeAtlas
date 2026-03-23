@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -11,8 +11,11 @@ import type { LexicalSearchBackend } from "../../packages/core/src/search/lexica
 import { FileSymbolIndexStore } from "../../packages/core/src/search/symbol-index-store.js";
 import { TypeScriptSymbolExtractor } from "../../packages/core/src/search/symbol-extractor.js";
 
-test("IndexCoordinator refreshes repository status independently", async () => {
+test("IndexCoordinator refreshes repository status independently", async (t) => {
   const tempRepoRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-repo-"));
+  t.after(async () => {
+    await rm(tempRepoRoot, { recursive: true, force: true });
+  });
   await mkdir(path.join(tempRepoRoot, "src"), { recursive: true });
   await writeFile(path.join(tempRepoRoot, "src", "repo-a.ts"), "export function repoA() { return true; }\n", "utf8");
 
@@ -64,6 +67,9 @@ test("IndexCoordinator refreshes repository status independently", async () => {
   };
 
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-symbols-"));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
   const coordinator = new IndexCoordinator(
     registry,
     metadataStore,

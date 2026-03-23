@@ -1,13 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { TypeScriptSymbolExtractor } from "../../packages/core/src/search/symbol-extractor.js";
 
-test("TypeScriptSymbolExtractor returns accurate line ranges for nested symbols", async () => {
+test("TypeScriptSymbolExtractor returns accurate line ranges for nested symbols", async (t) => {
   const repositoryRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-symbol-extractor-"));
+  t.after(async () => {
+    await rm(repositoryRoot, { recursive: true, force: true });
+  });
   await mkdir(path.join(repositoryRoot, "src"), { recursive: true });
   await writeFile(
     path.join(repositoryRoot, "src", "feature.ts"),

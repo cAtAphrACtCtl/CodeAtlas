@@ -3,7 +3,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import type { CodeAtlasConfig } from "../configuration/config.js";
+import type { RipgrepLexicalBackendConfig } from "../configuration/config.js";
 import type { RepositoryIndexStatus } from "../metadata/metadata-store.js";
 import type { RepositoryRecord } from "../registry/repository-registry.js";
 import type {
@@ -28,12 +28,12 @@ function toPosixPath(filePath: string): string {
   return filePath.split(path.sep).join("/").replace(/^\.\//, "");
 }
 
-export class RipgrepLexicalSearchBackend implements LexicalSearchBackend {
+export class BootstrapRipgrepLexicalSearchBackend implements LexicalSearchBackend {
   readonly kind = "ripgrep";
   private rgAvailable?: boolean;
 
   constructor(
-    private readonly backendConfig: CodeAtlasConfig["lexicalBackend"],
+    private readonly backendConfig: RipgrepLexicalBackendConfig,
     private readonly maxBytesPerFile: number,
   ) {}
 
@@ -229,3 +229,5 @@ export class RipgrepLexicalSearchBackend implements LexicalSearchBackend {
     return results;
   }
 }
+
+export { BootstrapRipgrepLexicalSearchBackend as RipgrepLexicalSearchBackend };

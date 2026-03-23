@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 
 import { IndexCoordinator } from "../../packages/core/src/indexer/index-coordinator.js";
 import { FileMetadataStore } from "../../packages/core/src/metadata/file-metadata-store.js";
@@ -15,8 +15,11 @@ import { FileSymbolIndexStore } from "../../packages/core/src/search/symbol-inde
 import { SymbolSearchBackend } from "../../packages/core/src/search/symbol-search-backend.js";
 import { TypeScriptSymbolExtractor } from "../../packages/core/src/search/symbol-extractor.js";
 
-test("MCP handlers expose phase 1 lexical search and source reading", async () => {
+test("MCP handlers expose phase 1 lexical search and source reading", async (t) => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-"));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
   const repositoryRoot = path.join(tempRoot, "sample-repo");
   const registryPath = path.join(tempRoot, "registry.json");
   const metadataPath = path.join(tempRoot, "metadata.json");
@@ -43,7 +46,6 @@ test("MCP handlers expose phase 1 lexical search and source reading", async () =
       kind: "ripgrep",
       executable: "rg",
       fallbackToNaiveScan: true,
-      contextLines: 2,
     },
     256 * 1024,
   );
