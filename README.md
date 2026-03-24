@@ -159,6 +159,138 @@ By default, CodeAtlas uses internal defaults rooted at the repository directory.
 
 - `CODEATLAS_CONFIG=./config/codeatlas.example.json`
 
+Platform-specific examples are also available:
+
+- Windows native Zoekt: `./config/codeatlas.windows.example.json`
+- WSL/Linux Zoekt: `./config/codeatlas.wsl.example.json`
+
+### 7. Install Zoekt On Windows
+
+For a repo-local Windows installation of Zoekt, use:
+
+```powershell
+npm run zoekt:install:windows
+```
+
+This is now the recommended default path on Windows. It first tries the upstream `go install` flow and automatically falls back to the patched source-build flow if upstream Windows builds fail.
+
+If the upstream `go install` path does not produce working Windows binaries, use the source-build path instead:
+
+```powershell
+npm run zoekt:install:windows:source
+```
+
+The installer script:
+
+- installs `zoekt.exe` and `zoekt-index.exe` into `.tools/zoekt/bin`
+- requires `go` to be available, or can optionally try `winget` if you pass `-InstallGoWithWinget` directly to the script
+- prints a ready-to-use config snippet pointing CodeAtlas at the installed binaries
+- the default npm entry now enables `-FallbackToSourceBuild`, so the standard Windows install command prefers the more resilient path
+- supports `-UseSourceBuild` for an explicit source-build path and `-FallbackToSourceBuild` to retry with a patched source build if `go install` fails
+
+The source-build path:
+
+- clones Zoekt source into a temporary directory
+- applies a minimal Windows compatibility patch for the missing `IndexFile` and `umask` implementations
+- builds `zoekt.exe` and `zoekt-index.exe` into the same `.tools/zoekt/bin` directory
+- uses your existing Go module environment by default instead of forcing a specific proxy configuration
+
+Proxy recommendation:
+
+- default behavior is to let Go use its normal module settings from your shell or machine configuration
+- if your network cannot reach the default Go module endpoints, pass `-GoProxy` and optionally `-GoSumDb` explicitly
+- for example, some environments may prefer `-GoProxy https://goproxy.cn,direct -GoSumDb sum.golang.google.cn`
+
+Example direct invocation:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-zoekt-windows.ps1 -FallbackToSourceBuild -AddUserPath
+```
+
+Example with an explicit Go proxy override:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-zoekt-windows.ps1 -FallbackToSourceBuild -GoProxy https://goproxy.cn,direct -GoSumDb sum.golang.google.cn
+```
+
+Explicit source build:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-zoekt-windows.ps1 -UseSourceBuild -AddUserPath
+```
+
+Automatic fallback to source build if `go install` fails:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-zoekt-windows.ps1 -FallbackToSourceBuild -AddUserPath
+```
+
+### 8. Windows And WSL Example Configs
+
+Windows-native example:
+
+```json
+{
+	"lexicalBackend": {
+		"kind": "zoekt",
+		"zoektIndexExecutable": "../.tools/zoekt/bin/zoekt-index.exe",
+		"zoektSearchExecutable": "../.tools/zoekt/bin/zoekt.exe",
+		"indexRoot": "../data/indexes/zoekt"
+	}
+}
+```
+
+Full file: [config/codeatlas.windows.example.json](config/codeatlas.windows.example.json)
+
+Use the Windows example when:
+
+- CodeAtlas itself is running on Windows
+- registered repository paths are Windows paths such as `C:\repo\project`
+- you want the standard install flow to work with the source-build fallback we added
+
+Why:
+
+- the current Zoekt backend launches executables directly with `execFile`, so Windows processes and Windows repository paths work naturally with Windows `zoekt.exe`
+- this keeps path handling simple because index build and search both stay in the same OS runtime as the MCP server
+- this is now the recommended default on Windows because the installer can recover from upstream Windows build failures by falling back to a patched source build
+
+WSL/Linux example:
+
+```json
+{
+	"lexicalBackend": {
+		"kind": "zoekt",
+		"zoektIndexExecutable": "../.tools/zoekt/linux-bin/zoekt-index",
+		"zoektSearchExecutable": "../.tools/zoekt/linux-bin/zoekt",
+		"indexRoot": "../data/indexes/zoekt-wsl"
+	}
+}
+```
+
+Full file: [config/codeatlas.wsl.example.json](config/codeatlas.wsl.example.json)
+
+Use the WSL example when:
+
+- CodeAtlas is running inside WSL, not from a Windows Node process
+- registered repository paths are Linux paths such as `/home/user/repo` or `/mnt/c/...`
+- you want to use native Linux Zoekt binaries without relying on the Windows compatibility patch
+
+Why:
+
+- Linux Zoekt is the upstream-native path and avoids the Windows-specific source patch entirely
+- if the MCP server process runs inside WSL, the executable paths, repository paths, and index paths all share one filesystem model
+- this is the cleaner option if your main development shell and repository workflow already live in WSL
+
+Do not mix the two models in one process:
+
+- do not run CodeAtlas on Windows while pointing it at WSL/Linux Zoekt binaries
+- do not register Windows-style repository paths while CodeAtlas is running inside WSL with Linux Zoekt
+
+Reason:
+
+- the current backend passes `repository.rootPath` directly to Zoekt commands and does not translate paths between Windows and WSL automatically
+- the executable and the repository path therefore need to belong to the same runtime environment
+
 ## Design Notes
 
 ### Why the repository is split into packages

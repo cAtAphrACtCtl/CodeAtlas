@@ -1,5 +1,13 @@
 node_modules/
 dist/
+.tools/
+
+# Packaged extension artifacts
+*.vsix
+
+# Local editor / OS noise
+Thumbs.db
+.DS_Store
 
 data/indexes/*
 data/metadata/*.local.json

@@ -18,10 +18,12 @@
     "mcp:watch": "node --watch --inspect=9230 --import tsx ./packages/mcp-server/src/main.ts",
     "dev:fullstack": "npm-run-all -p extension:watch mcp:watch",
     "start": "node dist/packages/mcp-server/src/main.js",
+    "zoekt:install:windows": "powershell -ExecutionPolicy Bypass -File ./scripts/install-zoekt-windows.ps1 -FallbackToSourceBuild",
+    "zoekt:install:windows:source": "powershell -ExecutionPolicy Bypass -File ./scripts/build-zoekt-windows-from-source.ps1",
     "extension:typecheck": "npm run typecheck --workspace codeatlas-vscode-extension",
     "extension:watch": "npm run watch --workspace codeatlas-vscode-extension",
     "extension:package": "npm run package:vsix --workspace codeatlas-vscode-extension",
-    "test": "tsx --test tests/unit/search-service.test.ts tests/unit/index-coordinator.test.ts tests/unit/symbol-extractor.test.ts tests/unit/lexical-backend-factory.test.ts tests/integration/mcp-handlers.test.ts"
+    "test": "tsx --test tests/unit/config.test.ts tests/unit/search-service.test.ts tests/unit/index-coordinator.test.ts tests/unit/symbol-extractor.test.ts tests/unit/lexical-backend-factory.test.ts tests/integration/mcp-handlers.test.ts"
   },
   "engines": {
     "node": ">=20.11.0"

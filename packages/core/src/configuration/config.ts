@@ -65,6 +65,22 @@ function resolvePath(baseDir: string, filePath: string): string {
   return path.isAbsolute(filePath) ? filePath : path.resolve(baseDir, filePath);
 }
 
+function resolveExecutablePath(baseDir: string, executable: string): string {
+  if (executable.trim() === "") {
+    throw new Error("Executable path cannot be empty")
+  }
+
+  if (path.isAbsolute(executable)) {
+    return executable;
+  }
+
+  if (executable.startsWith(".") || executable.includes("/") || executable.includes("\\")) {
+    return path.resolve(baseDir, executable);
+  }
+
+  return executable;
+}
+
 function defaultRipgrepLexicalBackendConfig(): RipgrepLexicalBackendConfig {
   return {
     kind: "ripgrep",
@@ -79,13 +95,14 @@ function resolveLexicalBackendConfig(baseDir: string, config?: PartialLexicalBac
   if (config?.kind === "zoekt") {
     return {
       kind: "zoekt",
-      zoektIndexExecutable: config.zoektIndexExecutable ?? "zoekt-index",
-      zoektSearchExecutable: config.zoektSearchExecutable ?? "zoekt",
+      zoektIndexExecutable: resolveExecutablePath(baseDir, config.zoektIndexExecutable ?? "zoekt-index"),
+      zoektSearchExecutable: resolveExecutablePath(baseDir, config.zoektSearchExecutable ?? "zoekt"),
       indexRoot: resolvePath(baseDir, config.indexRoot ?? "data/indexes/zoekt"),
       allowBootstrapFallback: config.allowBootstrapFallback ?? true,
       bootstrapFallback: {
         ...defaultRipgrep,
         ...(config.bootstrapFallback ?? {}),
+        executable: resolveExecutablePath(baseDir, config.bootstrapFallback?.executable ?? defaultRipgrep.executable),
         kind: "ripgrep",
       },
     };
@@ -94,6 +111,7 @@ function resolveLexicalBackendConfig(baseDir: string, config?: PartialLexicalBac
   return {
     ...defaultRipgrep,
     ...(config ?? {}),
+    executable: resolveExecutablePath(baseDir, config?.executable ?? defaultRipgrep.executable),
     kind: "ripgrep",
   };
 }
