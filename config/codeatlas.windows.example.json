@@ -6,7 +6,6 @@
     "kind": "zoekt",
     "zoektIndexExecutable": "../.tools/zoekt/bin/zoekt-index.exe",
     "zoektSearchExecutable": "../.tools/zoekt/bin/zoekt.exe",
-    "indexRoot": "../data/indexes/zoekt",
     "allowBootstrapFallback": true,
     "bootstrapFallback": {
       "kind": "ripgrep",

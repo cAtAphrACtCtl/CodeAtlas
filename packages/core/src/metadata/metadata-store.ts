@@ -3,6 +3,7 @@ export type IndexState = "not_indexed" | "indexing" | "ready" | "stale" | "error
 export interface RepositoryIndexStatus {
   repo: string;
   backend: string;
+  configuredBackend?: string;
   state: IndexState;
   lastIndexedAt?: string;
   symbolState?: IndexState;

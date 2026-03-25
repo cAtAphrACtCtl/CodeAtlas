@@ -89,15 +89,22 @@ function defaultRipgrepLexicalBackendConfig(): RipgrepLexicalBackendConfig {
   };
 }
 
-function resolveLexicalBackendConfig(baseDir: string, config?: PartialLexicalBackendConfig): LexicalBackendConfig {
+function resolveLexicalBackendConfig(baseDir: string, config?: PartialLexicalBackendConfig, topLevelIndexRoot?: string): LexicalBackendConfig {
   const defaultRipgrep = defaultRipgrepLexicalBackendConfig();
 
   if (config?.kind === "zoekt") {
+    // Priority for Zoekt indexRoot:
+    // 1. Explicit lexicalBackend.indexRoot from user config
+    // 2. Derived from top-level indexRoot: ${indexRoot}/zoekt
+    // 3. Built-in default: data/indexes/zoekt
+    const zoektIndexRoot = config.indexRoot
+      ?? (topLevelIndexRoot ? path.join(topLevelIndexRoot, "zoekt") : "data/indexes/zoekt");
+
     return {
       kind: "zoekt",
       zoektIndexExecutable: resolveExecutablePath(baseDir, config.zoektIndexExecutable ?? "zoekt-index"),
       zoektSearchExecutable: resolveExecutablePath(baseDir, config.zoektSearchExecutable ?? "zoekt"),
-      indexRoot: resolvePath(baseDir, config.indexRoot ?? "data/indexes/zoekt"),
+      indexRoot: resolvePath(baseDir, zoektIndexRoot),
       allowBootstrapFallback: config.allowBootstrapFallback ?? true,
       bootstrapFallback: {
         ...defaultRipgrep,
@@ -117,11 +124,12 @@ function resolveLexicalBackendConfig(baseDir: string, config?: PartialLexicalBac
 }
 
 export function defaultConfig(baseDir = process.cwd()): CodeAtlasConfig {
+  const indexRoot = "data/indexes";
   return {
     registryPath: path.resolve(baseDir, "data/registry/repositories.local.json"),
     metadataPath: path.resolve(baseDir, "data/metadata/index-status.local.json"),
-    indexRoot: path.resolve(baseDir, "data/indexes"),
-    lexicalBackend: resolveLexicalBackendConfig(baseDir),
+    indexRoot: path.resolve(baseDir, indexRoot),
+    lexicalBackend: resolveLexicalBackendConfig(baseDir, undefined, indexRoot),
     search: {
       defaultLimit: 20,
       maxLimit: 100,
@@ -147,12 +155,13 @@ export async function loadConfig(
   const resolvedConfigPath = path.resolve(configFilePath);
   const configDir = path.dirname(resolvedConfigPath);
   const userConfig = await readJsonFile<PartialCodeAtlasConfig>(resolvedConfigPath, {});
+  const userIndexRoot = userConfig.indexRoot ?? defaults.indexRoot;
 
   return {
     registryPath: resolvePath(configDir, userConfig.registryPath ?? defaults.registryPath),
     metadataPath: resolvePath(configDir, userConfig.metadataPath ?? defaults.metadataPath),
     indexRoot: resolvePath(configDir, userConfig.indexRoot ?? defaults.indexRoot),
-    lexicalBackend: resolveLexicalBackendConfig(configDir, userConfig.lexicalBackend),
+    lexicalBackend: resolveLexicalBackendConfig(configDir, userConfig.lexicalBackend, userIndexRoot),
     search: {
       ...defaults.search,
       ...userConfig.search,

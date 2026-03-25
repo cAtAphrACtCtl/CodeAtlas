@@ -174,6 +174,14 @@ Current state:
 - metadata remains owned by CodeAtlas even when lexical index files are produced by Zoekt
 - the ripgrep path is a bootstrap and fallback implementation, not the primary backend
 
+Per-repository index isolation:
+
+- each repository's Zoekt index shards live in a dedicated subdirectory under the Zoekt index root
+- directory layout: `${indexRoot}/zoekt/repos/<slug>-<hash>/`
+- the slug is derived from the repository name, the hash is an 8-character SHA-256 of the repository root path
+- this prevents shard collisions when multiple repositories are registered
+- the Zoekt index root is derived from the top-level `indexRoot` config as `${indexRoot}/zoekt`, with an optional `lexicalBackend.indexRoot` override for advanced use
+
 Important scope note:
 
 - Zoekt is used here as a lexical code search backend, not as a semantic retrieval backend
@@ -194,7 +202,7 @@ Refresh flow:
 
 - `register_repo` triggers `refresh_repo`
 - `refresh_repo` calls the active lexical backend to build or refresh lexical state for exactly one repository
-- in Zoekt mode, the lexical refresh step invokes Zoekt indexing for the repository root and configured index path
+- in Zoekt mode, the lexical refresh step invokes Zoekt indexing for the repository root, writing shards to that repository's dedicated index subdirectory
 - after lexical refresh completes, the same repository refresh cycle continues through symbol extraction and metadata updates
 
 Current coupling note:
@@ -254,7 +262,8 @@ Query flow:
 Configuration:
 
 - lexical backend configuration uses a backend-specific configuration model
-- Zoekt configuration includes executable paths and index storage location
+- Zoekt configuration includes executable paths; the index storage location is derived from the top-level `indexRoot` as `${indexRoot}/zoekt`
+- an explicit `lexicalBackend.indexRoot` override is available for advanced use cases but is not required in normal configurations
 - bootstrap fallback configuration remains available but is treated as development-only behavior
 
 Implementation boundary:

@@ -4,6 +4,7 @@ export * from "./configuration/configuration-service.js";
 export * from "./contracts/search.js";
 export * from "./discovery/repository-discovery.js";
 export * from "./indexer/index-coordinator.js";
+export * from "./indexer/repo-artifact-path.js";
 export * from "./metadata/file-metadata-store.js";
 export * from "./metadata/metadata-store.js";
 export * from "./reader/filesystem-source-reader.js";

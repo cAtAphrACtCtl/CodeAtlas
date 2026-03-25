@@ -11,8 +11,8 @@ This file tracks the near-term work needed to validate CodeAtlas as a Zoekt-firs
 
 ## Status and freshness
 
-- [ ] Make repository status explicit for `not_indexed`, `indexing`, `ready`, `stale`, and `error`.
-- [ ] Distinguish lexical readiness from symbol readiness in metadata and MCP-visible status.
+- [x] Make repository status explicit for `not_indexed`, `indexing`, `ready`, `stale`, and `error`.
+- [x] Distinguish lexical readiness from symbol readiness in metadata and MCP-visible status.
 - [ ] Decide how repository updates mark an index stale before the next refresh.
 - [ ] Keep the last successful lexical index available while a refresh is running.
 
@@ -22,6 +22,9 @@ This file tracks the near-term work needed to validate CodeAtlas as a Zoekt-firs
 - [ ] Document what counts as acceptable fallback to ripgrep and what counts as a hard failure.
 - [ ] Evaluate whether Zoekt service APIs or streaming search are worth adopting separately from indexing.
 - [ ] Confirm whether Zoekt symbol-aware ranking or `sym:`-style workflows reduce the need for custom symbol indexing.
+- [x] Isolate per-repository Zoekt index artifacts into dedicated subdirectories.
+- [x] Derive Zoekt index root from top-level `indexRoot` config automatically.
+- [x] Provide migration path from old shared flat Zoekt index layout.
 
 ## Symbol path decision
 

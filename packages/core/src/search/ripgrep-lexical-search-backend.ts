@@ -84,6 +84,10 @@ export class BootstrapRipgrepLexicalSearchBackend implements LexicalSearchBacken
     return this.searchWithNaiveScan(repository, request);
   }
 
+  async verifyRepositoryReady(): Promise<{ ready: boolean }> {
+    return { ready: true };
+  }
+
   private async isRipgrepAvailable(): Promise<boolean> {
     if (this.rgAvailable !== undefined) {
       return this.rgAvailable;

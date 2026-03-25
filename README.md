@@ -239,11 +239,11 @@ Windows-native example:
 
 ```json
 {
+	"indexRoot": "../data/indexes",
 	"lexicalBackend": {
 		"kind": "zoekt",
 		"zoektIndexExecutable": "../.tools/zoekt/bin/zoekt-index.exe",
-		"zoektSearchExecutable": "../.tools/zoekt/bin/zoekt.exe",
-		"indexRoot": "../data/indexes/zoekt"
+		"zoektSearchExecutable": "../.tools/zoekt/bin/zoekt.exe"
 	}
 }
 ```
@@ -266,11 +266,11 @@ WSL/Linux example:
 
 ```json
 {
+	"indexRoot": "../data/indexes",
 	"lexicalBackend": {
 		"kind": "zoekt",
 		"zoektIndexExecutable": "../.tools/zoekt/linux-bin/zoekt-index",
-		"zoektSearchExecutable": "../.tools/zoekt/linux-bin/zoekt",
-		"indexRoot": "../data/indexes/zoekt-wsl"
+		"zoektSearchExecutable": "../.tools/zoekt/linux-bin/zoekt"
 	}
 }
 ```
@@ -298,6 +298,48 @@ Reason:
 
 - the current backend passes `repository.rootPath` directly to Zoekt commands and does not translate paths between Windows and WSL automatically
 - the executable and the repository path therefore need to belong to the same runtime environment
+
+### 9. Index Root Configuration
+
+CodeAtlas uses a single `indexRoot` setting to determine where all index artifacts live. The Zoekt index directory is derived automatically:
+
+```
+${indexRoot}/zoekt/
+```
+
+You no longer need to set `lexicalBackend.indexRoot` in most configurations. The priority chain is:
+
+1. Explicit `lexicalBackend.indexRoot` (advanced override)
+2. Derived from top-level `indexRoot` as `${indexRoot}/zoekt`
+3. Built-in default: `data/indexes/zoekt`
+
+Inside the Zoekt index directory, each repository gets its own subdirectory:
+
+```
+${indexRoot}/zoekt/repos/<slug>-<hash>/
+```
+
+The slug is a sanitized version of the repository name, and the hash is an 8-character SHA-256 of the repository's root path. This ensures multi-repository isolation without collisions.
+
+### 10. Migrating From Shared Zoekt Index Layout
+
+If you have an existing Zoekt index from before per-repository isolation was added, use the migration script only when you have verified that the old flat Zoekt root contains shards for exactly one repository:
+
+```bash
+npm run zoekt:migrate-index -- --from ./data/indexes/zoekt --repo my-repo --root-path /path/to/my-repo --force-single-repo
+```
+
+Options:
+
+- `--from` (required): the old shared Zoekt index directory containing `.zoekt` files
+- `--repo` (required): the repository name as registered in CodeAtlas
+- `--root-path` (required): the repository root path used during registration
+- `--dry-run` (optional): preview what would be moved without making changes
+- `--force-single-repo` (required for actual moves): confirms that every loose shard file in the old flat directory belongs to the single repository you passed on the command line
+
+If the old flat directory contains shards from multiple repositories, do not migrate it in place. Delete the old flat shards and re-run `refresh_repo` for each repository to rebuild them into isolated per-repo directories.
+
+If migration fails, delete the old index directory and re-run `refresh_repo` to rebuild from scratch.
 
 ## Design Notes
 

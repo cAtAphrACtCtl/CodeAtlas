@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import type { ZoektLexicalBackendConfig } from "../configuration/config.js";
+import { getRepoBuildDir, getRepoIndexDir } from "../indexer/repo-artifact-path.js";
 import type { RepositoryIndexStatus } from "../metadata/metadata-store.js";
 import type { RepositoryRecord } from "../registry/repository-registry.js";
 import type { BackendSearchHit, BackendSearchRequest, LexicalSearchBackend } from "./lexical-search-backend.js";
@@ -58,10 +59,11 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
     }
 
     try {
-      await mkdir(this.backendConfig.indexRoot, { recursive: true });
+      const buildDir = getRepoBuildDir(this.backendConfig.indexRoot, repository.name, repository.rootPath);
+      await mkdir(buildDir, { recursive: true });
       await execFileAsync(
         this.backendConfig.zoektIndexExecutable,
-        ["-index", this.backendConfig.indexRoot, repository.rootPath],
+        ["-index", buildDir, repository.rootPath],
         {
           windowsHide: true,
           maxBuffer: 16 * 1024 * 1024,
@@ -74,7 +76,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
         backend: this.kind,
         state: "ready",
         lastIndexedAt: new Date().toISOString(),
-        detail: `Lexical index available via Zoekt at ${this.backendConfig.indexRoot}`,
+        detail: `Lexical index available via Zoekt at ${buildDir}`,
       };
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -89,9 +91,10 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
     }
 
     try {
+      const indexDir = getRepoIndexDir(this.backendConfig.indexRoot, repository.name, repository.rootPath);
       const { stdout } = await execFileAsync(
         this.backendConfig.zoektSearchExecutable,
-        ["-index_dir", this.backendConfig.indexRoot, request.query],
+        ["-index_dir", indexDir, request.query],
         {
           windowsHide: true,
           maxBuffer: 16 * 1024 * 1024,
@@ -103,6 +106,82 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       return this.searchWithFallback(repository, request, `Zoekt search failed: ${detail}`);
+    }
+  }
+
+  async verifyRepositoryReady(
+    repository: RepositoryRecord,
+    existingStatus?: RepositoryIndexStatus,
+  ): Promise<{ ready: boolean; state?: "stale" | "error"; detail?: string }> {
+    const configuredBackend = existingStatus?.configuredBackend ?? existingStatus?.backend;
+    if (configuredBackend && configuredBackend !== this.kind) {
+      return {
+        ready: false,
+        state: "stale",
+        detail: `Stored lexical status was prepared for backend ${configuredBackend}, but active backend is ${this.kind}`,
+      };
+    }
+
+    if (existingStatus?.backend && existingStatus.backend !== this.kind) {
+      if (this.backendConfig.allowBootstrapFallback && this.bootstrapBackend?.verifyRepositoryReady) {
+        return this.bootstrapBackend.verifyRepositoryReady(repository, existingStatus);
+      }
+
+      return {
+        ready: false,
+        state: "stale",
+        detail: `Stored lexical status uses fallback backend ${existingStatus.backend}, but no active readiness verifier is available for it`,
+      };
+    }
+
+    const availability = await this.getZoektAvailability();
+    if (!availability.available) {
+      return {
+        ready: false,
+        state: "stale",
+        detail: availability.detail,
+      };
+    }
+
+    const indexDir = getRepoIndexDir(this.backendConfig.indexRoot, repository.name, repository.rootPath);
+
+    try {
+      const directoryStats = await stat(indexDir);
+      if (!directoryStats.isDirectory()) {
+        return {
+          ready: false,
+          state: "stale",
+          detail: `Zoekt index path is not a directory for repository ${repository.name}: ${indexDir}`,
+        };
+      }
+
+      const entries = await readdir(indexDir, { withFileTypes: true });
+      const hasShardFiles = entries.some((entry) => entry.isFile() && entry.name.endsWith(".zoekt"));
+
+      if (!hasShardFiles) {
+        return {
+          ready: false,
+          state: "stale",
+          detail: `Zoekt index directory has no shard files for repository ${repository.name}: ${indexDir}`,
+        };
+      }
+
+      return { ready: true };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+        return {
+          ready: false,
+          state: "stale",
+          detail: `Zoekt index directory is missing for repository ${repository.name}: ${indexDir}`,
+        };
+      }
+
+      return {
+        ready: false,
+        state: "error",
+        detail: `Unable to inspect Zoekt index directory for repository ${repository.name}: ${detail}`,
+      };
     }
   }
 

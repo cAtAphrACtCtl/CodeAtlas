@@ -5,9 +5,11 @@ import os from "node:os";
 import path from "node:path";
 
 import { IndexCoordinator } from "../../packages/core/src/indexer/index-coordinator.js";
+import { getRepoIndexDir } from "../../packages/core/src/indexer/repo-artifact-path.js";
 import type { MetadataStore, RepositoryIndexStatus } from "../../packages/core/src/metadata/metadata-store.js";
 import type { RepositoryRegistry } from "../../packages/core/src/registry/repository-registry.js";
 import type { LexicalSearchBackend } from "../../packages/core/src/search/lexical-search-backend.js";
+import { ZoektLexicalSearchBackend } from "../../packages/core/src/search/zoekt-lexical-search-backend.js";
 import { FileSymbolIndexStore } from "../../packages/core/src/search/symbol-index-store.js";
 import { TypeScriptSymbolExtractor } from "../../packages/core/src/search/symbol-extractor.js";
 
@@ -152,6 +154,284 @@ test("IndexCoordinator lexical readiness does not require symbol readiness", asy
   assert.equal(ready.state, "ready");
   assert.equal(ready.symbolState, "stale");
   assert.equal(prepareCalls, 0);
+});
+
+test("IndexCoordinator reindexes when stored ready metadata points to a missing Zoekt repo directory", async (t) => {
+  const repositoryRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-zoekt-ready-"));
+  const zoektRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-zoekt-index-"));
+  const symbolRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-symbols-ready-"));
+  t.after(async () => {
+    await rm(repositoryRoot, { recursive: true, force: true });
+    await rm(zoektRoot, { recursive: true, force: true });
+    await rm(symbolRoot, { recursive: true, force: true });
+  });
+
+  await mkdir(path.join(repositoryRoot, "src"), { recursive: true });
+  await writeFile(path.join(repositoryRoot, "src", "repo-a.ts"), "export const value = 1;\n", "utf8");
+
+  const repository = {
+    name: "repo-a",
+    rootPath: repositoryRoot,
+    registeredAt: new Date().toISOString(),
+  };
+
+  const registry: RepositoryRegistry = {
+    async listRepositories() {
+      return [repository];
+    },
+    async getRepository(name) {
+      return name === repository.name ? repository : null;
+    },
+    async registerRepository() {
+      return repository;
+    },
+  };
+
+  const statuses = new Map<string, RepositoryIndexStatus>([
+    [
+      repository.name,
+      {
+        repo: repository.name,
+        backend: "zoekt",
+        configuredBackend: "zoekt",
+        state: "ready",
+        symbolState: "ready",
+        lastIndexedAt: "2026-03-25T00:00:00.000Z",
+        symbolLastIndexedAt: "2026-03-25T00:00:00.000Z",
+      },
+    ],
+  ]);
+
+  let prepareCalls = 0;
+  const backend = new ZoektLexicalSearchBackend(
+    {
+      kind: "zoekt",
+      zoektIndexExecutable: "missing-zoekt-index",
+      zoektSearchExecutable: "missing-zoekt-search",
+      indexRoot: zoektRoot,
+      allowBootstrapFallback: true,
+      bootstrapFallback: {
+        kind: "ripgrep",
+        executable: "rg",
+        fallbackToNaiveScan: true,
+      },
+    },
+    {
+      kind: "ripgrep",
+      async prepareRepository(candidate) {
+        prepareCalls += 1;
+
+        const repoDir = getRepoIndexDir(zoektRoot, candidate.name, candidate.rootPath);
+        await mkdir(repoDir, { recursive: true });
+        await writeFile(path.join(repoDir, "repo.zoekt"), "placeholder shard", "utf8");
+
+        return {
+          repo: candidate.name,
+          backend: "ripgrep",
+          state: "ready",
+          detail: "fallback ready",
+        };
+      },
+      async searchRepository() {
+        return [];
+      },
+      async verifyRepositoryReady() {
+        return { ready: true };
+      },
+    },
+  );
+
+  const coordinator = new IndexCoordinator(
+    registry,
+    createMetadataStore(statuses),
+    backend,
+    new TypeScriptSymbolExtractor(),
+    new FileSymbolIndexStore(symbolRoot),
+  );
+
+  const ready = await coordinator.ensureLexicalReady(repository.name);
+
+  assert.equal(prepareCalls, 1);
+  assert.equal(ready.state, "ready");
+  assert.equal(statuses.get(repository.name)?.backend, "ripgrep");
+  assert.equal(statuses.get(repository.name)?.state, "ready");
+});
+
+test("IndexCoordinator keeps a stored ready status when the active backend confirms fallback-backed readiness", async (t) => {
+  const repositoryRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-fallback-ready-"));
+  t.after(async () => {
+    await rm(repositoryRoot, { recursive: true, force: true });
+  });
+
+  const repository = {
+    name: "repo-a",
+    rootPath: repositoryRoot,
+    registeredAt: new Date().toISOString(),
+  };
+
+  const registry: RepositoryRegistry = {
+    async listRepositories() {
+      return [repository];
+    },
+    async getRepository(name) {
+      return name === repository.name ? repository : null;
+    },
+    async registerRepository() {
+      return repository;
+    },
+  };
+
+  const statuses = new Map<string, RepositoryIndexStatus>([
+    [
+      repository.name,
+      {
+        repo: repository.name,
+        backend: "ripgrep",
+        configuredBackend: "zoekt",
+        state: "ready",
+        symbolState: "ready",
+        lastIndexedAt: "2026-03-25T00:00:00.000Z",
+        symbolLastIndexedAt: "2026-03-25T00:00:00.000Z",
+      },
+    ],
+  ]);
+
+  let prepareCalls = 0;
+  let verifyCalls = 0;
+  const backend = new ZoektLexicalSearchBackend(
+    {
+      kind: "zoekt",
+      zoektIndexExecutable: "missing-zoekt-index",
+      zoektSearchExecutable: "missing-zoekt-search",
+      indexRoot: "C:/indexes/zoekt",
+      allowBootstrapFallback: true,
+      bootstrapFallback: {
+        kind: "ripgrep",
+        executable: "rg",
+        fallbackToNaiveScan: true,
+      },
+    },
+    {
+      kind: "ripgrep",
+      async prepareRepository(candidate) {
+        prepareCalls += 1;
+        return {
+          repo: candidate.name,
+          backend: "ripgrep",
+          state: "ready",
+        };
+      },
+      async searchRepository() {
+        return [];
+      },
+      async verifyRepositoryReady() {
+        verifyCalls += 1;
+        return { ready: true };
+      },
+    },
+  );
+
+  const coordinator = new IndexCoordinator(
+    registry,
+    createMetadataStore(statuses),
+    backend,
+    new TypeScriptSymbolExtractor(),
+    new FileSymbolIndexStore("C:/tmp/codeatlas-unused"),
+  );
+
+  const ready = await coordinator.ensureLexicalReady(repository.name);
+
+  assert.equal(ready.backend, "ripgrep");
+  assert.equal(prepareCalls, 0);
+  assert.equal(verifyCalls, 1);
+});
+
+test("IndexCoordinator refreshes when stored ready metadata was produced by a different backend", async (t) => {
+  const repositoryRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-backend-switch-"));
+  t.after(async () => {
+    await rm(repositoryRoot, { recursive: true, force: true });
+  });
+
+  const repository = {
+    name: "repo-a",
+    rootPath: repositoryRoot,
+    registeredAt: new Date().toISOString(),
+  };
+
+  const registry: RepositoryRegistry = {
+    async listRepositories() {
+      return [repository];
+    },
+    async getRepository(name) {
+      return name === repository.name ? repository : null;
+    },
+    async registerRepository() {
+      return repository;
+    },
+  };
+
+  const statuses = new Map<string, RepositoryIndexStatus>([
+    [
+      repository.name,
+      {
+        repo: repository.name,
+        backend: "ripgrep",
+        configuredBackend: "ripgrep",
+        state: "ready",
+        symbolState: "ready",
+        lastIndexedAt: "2026-03-25T00:00:00.000Z",
+        symbolLastIndexedAt: "2026-03-25T00:00:00.000Z",
+      },
+    ],
+  ]);
+
+  let prepareCalls = 0;
+  const backend = new ZoektLexicalSearchBackend(
+    {
+      kind: "zoekt",
+      zoektIndexExecutable: "missing-zoekt-index",
+      zoektSearchExecutable: "missing-zoekt-search",
+      indexRoot: "C:/indexes/zoekt",
+      allowBootstrapFallback: true,
+      bootstrapFallback: {
+        kind: "ripgrep",
+        executable: "rg",
+        fallbackToNaiveScan: true,
+      },
+    },
+    {
+      kind: "ripgrep",
+      async prepareRepository(candidate) {
+        prepareCalls += 1;
+        return {
+          repo: candidate.name,
+          backend: "ripgrep",
+          state: "ready",
+          detail: "fallback ready",
+        };
+      },
+      async searchRepository() {
+        return [];
+      },
+      async verifyRepositoryReady() {
+        return { ready: true };
+      },
+    },
+  );
+
+  const coordinator = new IndexCoordinator(
+    registry,
+    createMetadataStore(statuses),
+    backend,
+    new TypeScriptSymbolExtractor(),
+    new FileSymbolIndexStore("C:/tmp/codeatlas-unused"),
+  );
+
+  const ready = await coordinator.ensureLexicalReady(repository.name);
+
+  assert.equal(prepareCalls, 1);
+  assert.equal(ready.backend, "ripgrep");
+  assert.equal(statuses.get(repository.name)?.backend, "ripgrep");
 });
 
 test("IndexCoordinator can mark a repository stale", async () => {

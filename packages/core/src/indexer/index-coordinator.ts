@@ -23,7 +23,10 @@ export class IndexCoordinator {
   async ensureLexicalReady(repoName: string): Promise<RepositoryIndexStatus> {
     const existing = await this.metadataStore.getIndexStatus(repoName);
     if (existing?.state === "ready") {
-      return existing;
+      const verified = await this.validateStoredLexicalReadyStatus(repoName, existing);
+      if (verified) {
+        return verified;
+      }
     }
 
     const inFlight = this.inFlightRefreshes.get(repoName);
@@ -37,7 +40,10 @@ export class IndexCoordinator {
   async ensureSymbolReady(repoName: string): Promise<RepositoryIndexStatus> {
     const existing = await this.metadataStore.getIndexStatus(repoName);
     if (existing?.state === "ready" && existing.symbolState === "ready") {
-      return existing;
+      const verified = await this.validateStoredLexicalReadyStatus(repoName, existing);
+      if (verified) {
+        return verified;
+      }
     }
 
     const inFlight = this.inFlightRefreshes.get(repoName);
@@ -76,6 +82,7 @@ export class IndexCoordinator {
     const status: RepositoryIndexStatus = {
       repo: repository.name,
       backend: existing?.backend ?? this.lexicalBackend.kind,
+      configuredBackend: existing?.configuredBackend ?? this.lexicalBackend.kind,
       state: "stale",
       lastIndexedAt: existing?.lastIndexedAt,
       symbolState:
@@ -89,6 +96,45 @@ export class IndexCoordinator {
     return status;
   }
 
+  private async validateStoredLexicalReadyStatus(
+    repoName: string,
+    existing: RepositoryIndexStatus,
+  ): Promise<RepositoryIndexStatus | null> {
+    if (!this.lexicalBackend.verifyRepositoryReady) {
+      return existing;
+    }
+
+    const repository = await this.registry.getRepository(repoName);
+    if (!repository) {
+      return existing;
+    }
+
+    let readiness;
+    try {
+      readiness = await this.lexicalBackend.verifyRepositoryReady(repository, existing);
+    } catch (error) {
+      readiness = {
+        ready: false,
+        state: "error" as const,
+        detail: `Lexical readiness verification failed: ${String(error)}`,
+      };
+    }
+
+    if (readiness.ready) {
+      return existing;
+    }
+
+    await this.metadataStore.setIndexStatus({
+      ...existing,
+      backend: existing.backend || this.lexicalBackend.kind,
+      configuredBackend: existing.configuredBackend ?? this.lexicalBackend.kind,
+      state: readiness.state ?? "stale",
+      detail: readiness.detail ?? existing.detail,
+    });
+
+    return null;
+  }
+
   private async refreshRepositoryInternal(repoName: string): Promise<RepositoryIndexStatus> {
     const repository = await this.registry.getRepository(repoName);
     if (!repository) {
@@ -99,6 +145,7 @@ export class IndexCoordinator {
     await this.metadataStore.setIndexStatus({
       repo: repository.name,
       backend: existing?.backend ?? this.lexicalBackend.kind,
+      configuredBackend: this.lexicalBackend.kind,
       state: "indexing",
       lastIndexedAt: existing?.lastIndexedAt,
       symbolState: "indexing",
@@ -151,6 +198,7 @@ export class IndexCoordinator {
         {
           repo: repoName,
           backend: this.lexicalBackend.kind,
+          configuredBackend: this.lexicalBackend.kind,
           state: "not_indexed",
           symbolState: "not_indexed",
         },
@@ -166,6 +214,7 @@ export class IndexCoordinator {
         statusMap.get(repository.name) ?? {
           repo: repository.name,
           backend: this.lexicalBackend.kind,
+          configuredBackend: this.lexicalBackend.kind,
           state: "not_indexed",
           symbolState: "not_indexed",
         }

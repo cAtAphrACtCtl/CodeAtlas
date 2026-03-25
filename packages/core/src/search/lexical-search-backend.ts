@@ -14,8 +14,18 @@ export interface BackendSearchHit {
   score: number;
 }
 
+export interface BackendRepositoryReadiness {
+  ready: boolean;
+  state?: "stale" | "error";
+  detail?: string;
+}
+
 export interface LexicalSearchBackend {
   readonly kind: string;
   prepareRepository(repository: RepositoryRecord): Promise<RepositoryIndexStatus>;
   searchRepository(repository: RepositoryRecord, request: BackendSearchRequest): Promise<BackendSearchHit[]>;
+  verifyRepositoryReady?(
+    repository: RepositoryRecord,
+    existingStatus?: RepositoryIndexStatus,
+  ): Promise<BackendRepositoryReadiness>;
 }
