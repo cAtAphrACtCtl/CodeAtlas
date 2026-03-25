@@ -1,4 +1,5 @@
 export * from "./common/errors.js";
+export * from "./common/debug.js";
 export * from "./configuration/config.js";
 export * from "./configuration/configuration-service.js";
 export * from "./contracts/search.js";

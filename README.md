@@ -56,7 +56,7 @@ Implemented now:
 - `get_index_status`
 - `refresh_repo`
 
-`find_symbol` is implemented, but its current TS and JS-specific backing index is still under evaluation.
+`find_symbol` is implemented, but its current TS and JS-specific backing index is still under evaluation. When `exact: true` is supplied, only case-insensitive exact symbol name matches are returned.
 
 Reserved with stable contracts (placeholder implementations):
 
@@ -395,6 +395,8 @@ The future hybrid design can add semantic candidates and reranking behind the ex
 
 The current symbol-aware slice indexes top-level and nested TypeScript and JavaScript declarations locally during repository refresh. This enables a dedicated `find_symbol` MCP tool without changing the existing lexical result shape or the reserved semantic and hybrid contracts. The feature remains under evaluation and will be compared against Zoekt-first lexical workflows before any broader custom symbol indexing scope or deeper symbol work is considered.
 
+For `find_symbol`, `exact: true` is strict exact-name matching. Prefix, substring, and container-name matches are only used when `exact` is omitted or false.
+
 ### Agent retrieval policy
 
 For agent-style retrieval today, CodeAtlas treats Zoekt-backed lexical search as the primary retrieval path.
@@ -424,6 +426,10 @@ For a smooth local development loop in VS Code:
 - `CodeAtlas Dev: Full Stack Watch` keeps the extension bundle and MCP server in watch mode while attaching debuggers where possible
 
 Available development tasks:
+
+- set `CODEATLAS_DEBUG=symbol-search` to emit compact symbol search diagnostics to stderr during MCP execution
+- use `node "scripts/mcp-functional-review.mjs"` for a reusable real-MCP functional review against the current repository
+- see `docs/mcp-functional-review.md` for the repeatable functional review workflow
 
 - `codeatlas: build server`
 - `codeatlas: build extension`

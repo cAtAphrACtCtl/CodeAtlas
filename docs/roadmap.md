@@ -92,6 +92,8 @@ Delivered so far:
 - symbol search backend with exact, prefix, and substring matching
 - `find_symbol` MCP tool
 - query-time readiness checks that stay aligned with repository refresh behavior
+- strict exact-name filtering for `find_symbol exact=true`
+- `read_source` now rejects out-of-range starting lines explicitly
 
 Decision gate:
 

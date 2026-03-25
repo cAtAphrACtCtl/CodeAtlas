@@ -280,6 +280,121 @@ test("SearchService returns symbol-aware results from the local symbol index", a
   assert.equal(response.results[0]?.kind, "function");
 });
 
+test("SearchService exact symbol search only returns exact name matches", async () => {
+  const repository = {
+    name: "alpha",
+    rootPath: "C:/repos/alpha",
+    registeredAt: new Date().toISOString(),
+  };
+
+  const registry: RepositoryRegistry = {
+    async listRepositories() {
+      return [repository];
+    },
+    async getRepository(name) {
+      return name === repository.name ? repository : null;
+    },
+    async registerRepository() {
+      return repository;
+    },
+  };
+
+  const indexCoordinator = {
+    async ensureReady() {
+      return {
+        repo: repository.name,
+        backend: "mock",
+        state: "ready",
+        symbolState: "ready",
+      };
+    },
+    async ensureLexicalReady() {
+      return {
+        repo: repository.name,
+        backend: "mock",
+        state: "ready",
+      };
+    },
+    async ensureSymbolReady() {
+      return {
+        repo: repository.name,
+        backend: "mock",
+        state: "ready",
+        symbolState: "ready",
+      };
+    },
+    async refreshRepository() {
+      return {
+        repo: repository.name,
+        backend: "mock",
+        state: "ready",
+      };
+    },
+    async getStatus() {
+      return [];
+    },
+  } as unknown as IndexCoordinator;
+
+  const backend: LexicalSearchBackend = {
+    kind: "mock",
+    async prepareRepository() {
+      return {
+        repo: repository.name,
+        backend: "mock",
+        state: "ready",
+      };
+    },
+    async searchRepository() {
+      return [];
+    },
+  };
+
+  const symbolSearchBackend = new SymbolSearchBackend({
+    async getSymbols() {
+      return [
+        {
+          repo: "alpha",
+          path: "src/runtime.ts",
+          name: "createCodeAtlasServices",
+          kind: "function",
+          start_line: 1,
+          end_line: 10,
+        },
+        {
+          repo: "alpha",
+          path: "src/runtime.ts",
+          name: "CreateCodeAtlasServicesOptions",
+          kind: "interface",
+          start_line: 12,
+          end_line: 15,
+        },
+        {
+          repo: "alpha",
+          path: "src/runtime.ts",
+          name: "baseDir",
+          kind: "property",
+          start_line: 13,
+          end_line: 13,
+          container_name: "CreateCodeAtlasServicesOptions",
+        },
+      ];
+    },
+    async setSymbols() {},
+  });
+
+  const service = new SearchService(registry, indexCoordinator, backend, symbolSearchBackend, {
+    defaultLimit: 20,
+    maxLimit: 100,
+    maxBytesPerFile: 256 * 1024,
+  });
+
+  const response = await service.findSymbols({ query: "createCodeAtlasServices", exact: true });
+
+  assert.equal(response.results.length, 1);
+  assert.equal(response.results[0]?.name, "createCodeAtlasServices");
+  assert.equal(response.results[0]?.kind, "function");
+});
+
 test("SearchService ranks symbol results across repositories by score", async () => {
   const alpha = {
     name: "alpha",

@@ -120,3 +120,61 @@ test("MCP handlers expose phase 1 lexical search and source reading", async (t) 
   assert.equal(readPayload.end_line, 6);
   assert.match(readPayload.content, /buildAtlas/);
 });
+
+test("MCP handlers reject read_source requests when start_line exceeds file length", async (t) => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-"));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+  const repositoryRoot = path.join(tempRoot, "sample-repo");
+  const registryPath = path.join(tempRoot, "registry.json");
+  const metadataPath = path.join(tempRoot, "metadata.json");
+
+  await mkdir(path.join(repositoryRoot, "src"), { recursive: true });
+  await writeFile(path.join(repositoryRoot, "src", "feature.ts"), "export const value = 1;\n", "utf8");
+
+  const registry = new FileRepositoryRegistry(registryPath);
+  const metadataStore = new FileMetadataStore(metadataPath);
+  const backend = new RipgrepLexicalSearchBackend(
+    {
+      kind: "ripgrep",
+      executable: "rg",
+      fallbackToNaiveScan: true,
+    },
+    256 * 1024,
+  );
+  const symbolIndexStore = new FileSymbolIndexStore(path.join(tempRoot, "indexes"));
+  const symbolExtractor = new TypeScriptSymbolExtractor();
+  const symbolSearchBackend = new SymbolSearchBackend(symbolIndexStore);
+  const indexCoordinator = new IndexCoordinator(registry, metadataStore, backend, symbolExtractor, symbolIndexStore);
+  const sourceReader = new FileSystemSourceReader();
+  const searchService = new SearchService(registry, indexCoordinator, backend, symbolSearchBackend, {
+    defaultLimit: 20,
+    maxLimit: 100,
+    maxBytesPerFile: 256 * 1024,
+  });
+
+  await registry.registerRepository({
+    name: "sample",
+    rootPath: repositoryRoot,
+  });
+
+  const handlers = createHandlers({
+    registry,
+    metadataStore,
+    indexCoordinator,
+    searchService,
+    sourceReader,
+  });
+
+  await assert.rejects(
+    () =>
+      handlers.readSource({
+        repo: "sample",
+        path: "src/feature.ts",
+        start_line: 99,
+        end_line: 100,
+      }),
+    /start_line exceeds file length/,
+  );
+});

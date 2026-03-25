@@ -349,6 +349,7 @@ Current state:
 - implemented as local TypeScript-powered symbol extraction for TS and JS codebases
 - `find_symbol` is a dedicated symbol lookup surface while existing lexical contracts remain unchanged
 - symbol refresh is coordinated with the same repository refresh lifecycle used for Zoekt
+- `find_symbol` with `exact: true` is strict exact-name filtering rather than fuzzy ranking with exact preference
 
 Remaining:
 
@@ -392,8 +393,14 @@ Execution notes:
 - `refresh_repo` is the point where lexical index readiness and symbol index generation are performed together.
 - symbol extraction is file-based and currently only runs on `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`, `.mjs`, and `.cjs` files.
 - `find_symbol` does not re-parse the repository on every query; it reads the locally persisted symbol index and ranks matches from that cache.
+- exact symbol queries filter by exact case-insensitive name before sorting, while non-exact queries still use prefix, substring, and container-name scoring.
+- `read_source` rejects out-of-range `start_line` requests instead of returning inconsistent line ranges.
 - `ensureReady` is the guard between lookup and indexing. If a repository has not been indexed yet, lookup will trigger the refresh path first.
 - this symbol path is currently experimental and should not drive broader architecture decisions until its value over Zoekt-first workflows is clear.
+
+Operational note:
+
+- real MCP functional review should use the stdio-based workflow captured in `docs/mcp-functional-review.md` rather than handler-only testing when validating end-to-end behavior
 
 ### Phase 3: chunk-based indexing and local embeddings (deferred)
 

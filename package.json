@@ -16,6 +16,7 @@
     "dev": "tsx packages/mcp-server/src/main.ts",
     "mcp:debug": "node --inspect=9230 --import tsx ./packages/mcp-server/src/main.ts",
     "mcp:watch": "node --watch --inspect=9230 --import tsx ./packages/mcp-server/src/main.ts",
+    "mcp:functional-review": "node ./scripts/mcp-functional-review.mjs",
     "dev:fullstack": "npm-run-all -p extension:watch mcp:watch",
     "start": "node dist/packages/mcp-server/src/main.js",
     "zoekt:install:windows": "powershell -ExecutionPolicy Bypass -File ./scripts/install-zoekt-windows.ps1 -FallbackToSourceBuild",

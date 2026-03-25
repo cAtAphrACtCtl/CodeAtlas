@@ -24,6 +24,7 @@ export class FileSystemSourceReader implements SourceReader {
 
     const fileContents = await readFile(resolvedPath, "utf8");
     const lines = fileContents.split(/\r?\n/);
+    invariant(startLine <= lines.length, `start_line exceeds file length (${lines.length})`);
     const safeEndLine = Math.min(endLine, lines.length);
     const content = lines.slice(startLine - 1, safeEndLine).join("\n");
 
