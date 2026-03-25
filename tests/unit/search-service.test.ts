@@ -34,6 +34,21 @@ test("SearchService returns lexical results using the stable result contract", a
         state: "ready",
       };
     },
+    async ensureLexicalReady() {
+      return {
+        repo: repository.name,
+        backend: "mock",
+        state: "ready",
+      };
+    },
+    async ensureSymbolReady() {
+      return {
+        repo: repository.name,
+        backend: "mock",
+        state: "ready",
+        symbolState: "ready",
+      };
+    },
     async refreshRepository() {
       return {
         repo: repository.name,
@@ -117,6 +132,12 @@ test("SearchService reserves semantic and hybrid contracts with TODO markers", a
     async ensureReady() {
       throw new Error("not used");
     },
+    async ensureLexicalReady() {
+      throw new Error("not used");
+    },
+    async ensureSymbolReady() {
+      throw new Error("not used");
+    },
     async refreshRepository() {
       throw new Error("not used");
     },
@@ -182,6 +203,21 @@ test("SearchService returns symbol-aware results from the local symbol index", a
 
   const indexCoordinator = {
     async ensureReady() {
+      return {
+        repo: repository.name,
+        backend: "mock",
+        state: "ready",
+        symbolState: "ready",
+      };
+    },
+    async ensureLexicalReady() {
+      return {
+        repo: repository.name,
+        backend: "mock",
+        state: "ready",
+      };
+    },
+    async ensureSymbolReady() {
       return {
         repo: repository.name,
         backend: "mock",
@@ -277,6 +313,21 @@ test("SearchService ranks symbol results across repositories by score", async ()
         symbolState: "ready",
       };
     },
+    async ensureLexicalReady() {
+      return {
+        repo: alpha.name,
+        backend: "mock",
+        state: "ready",
+      };
+    },
+    async ensureSymbolReady() {
+      return {
+        repo: alpha.name,
+        backend: "mock",
+        state: "ready",
+        symbolState: "ready",
+      };
+    },
     async refreshRepository() {
       return {
         repo: alpha.name,
@@ -343,4 +394,90 @@ test("SearchService ranks symbol results across repositories by score", async ()
   assert.equal(response.results.length, 2);
   assert.equal(response.results[0]?.repo, "beta");
   assert.equal(response.results[0]?.name, "atlasBuilder");
+});
+
+test("SearchService lexical search only requires lexical readiness", async () => {
+  const repository = {
+    name: "alpha",
+    rootPath: "C:/repos/alpha",
+    registeredAt: new Date().toISOString(),
+  };
+
+  const registry: RepositoryRegistry = {
+    async listRepositories() {
+      return [repository];
+    },
+    async getRepository(name) {
+      return name === repository.name ? repository : null;
+    },
+    async registerRepository() {
+      return repository;
+    },
+  };
+
+  const indexCoordinator = {
+    async ensureReady() {
+      throw new Error("not used");
+    },
+    async ensureLexicalReady() {
+      return {
+        repo: repository.name,
+        backend: "mock",
+        state: "ready",
+      };
+    },
+    async ensureSymbolReady() {
+      throw new Error("symbol readiness should not be required for lexical search");
+    },
+    async refreshRepository() {
+      throw new Error("not used");
+    },
+    async getStatus() {
+      return [];
+    },
+  } as unknown as IndexCoordinator;
+
+  const backend: LexicalSearchBackend = {
+    kind: "mock",
+    async prepareRepository() {
+      return {
+        repo: repository.name,
+        backend: "mock",
+        state: "ready",
+      };
+    },
+    async searchRepository() {
+      return [
+        {
+          path: "src/example.ts",
+          startLine: 1,
+          endLine: 1,
+          snippet: "export const atlas = true;",
+          score: 50,
+        },
+      ];
+    },
+  };
+
+  const service = new SearchService(
+    registry,
+    indexCoordinator,
+    backend,
+    new SymbolSearchBackend({
+      async getSymbols() {
+        return [];
+      },
+      async setSymbols() {},
+    }),
+    {
+      defaultLimit: 20,
+      maxLimit: 100,
+      maxBytesPerFile: 256 * 1024,
+    },
+  );
+
+  const response = await service.searchLexical({ query: "atlas" });
+
+  assert.equal(response.results.length, 1);
+  assert.equal(response.results[0]?.path, "src/example.ts");
 });

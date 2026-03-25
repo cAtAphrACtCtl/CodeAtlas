@@ -6,6 +6,8 @@ import { TypeScriptSymbolExtractor } from "../search/symbol-extractor.js";
 import type { SymbolIndexStore } from "../search/symbol-index-store.js";
 
 export class IndexCoordinator {
+  private readonly inFlightRefreshes = new Map<string, Promise<RepositoryIndexStatus>>();
+
   constructor(
     private readonly registry: RepositoryRegistry,
     private readonly metadataStore: MetadataStore,
@@ -15,19 +17,95 @@ export class IndexCoordinator {
   ) {}
 
   async ensureReady(repoName: string): Promise<RepositoryIndexStatus> {
+    return this.ensureSymbolReady(repoName);
+  }
+
+  async ensureLexicalReady(repoName: string): Promise<RepositoryIndexStatus> {
+    const existing = await this.metadataStore.getIndexStatus(repoName);
+    if (existing?.state === "ready") {
+      return existing;
+    }
+
+    const inFlight = this.inFlightRefreshes.get(repoName);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    return this.refreshRepository(repoName);
+  }
+
+  async ensureSymbolReady(repoName: string): Promise<RepositoryIndexStatus> {
     const existing = await this.metadataStore.getIndexStatus(repoName);
     if (existing?.state === "ready" && existing.symbolState === "ready") {
       return existing;
+    }
+
+    const inFlight = this.inFlightRefreshes.get(repoName);
+    if (inFlight) {
+      return inFlight;
     }
 
     return this.refreshRepository(repoName);
   }
 
   async refreshRepository(repoName: string): Promise<RepositoryIndexStatus> {
+    const existingRefresh = this.inFlightRefreshes.get(repoName);
+    if (existingRefresh) {
+      return existingRefresh;
+    }
+
+    const refreshPromise = this.refreshRepositoryInternal(repoName);
+    this.inFlightRefreshes.set(repoName, refreshPromise);
+
+    try {
+      return await refreshPromise;
+    } finally {
+      if (this.inFlightRefreshes.get(repoName) === refreshPromise) {
+        this.inFlightRefreshes.delete(repoName);
+      }
+    }
+  }
+
+  async markRepositoryStale(repoName: string, detail = "Repository contents changed and require refresh"): Promise<RepositoryIndexStatus> {
     const repository = await this.registry.getRepository(repoName);
     if (!repository) {
       throw new CodeAtlasError(`Unknown repository: ${repoName}`);
     }
+
+    const existing = await this.metadataStore.getIndexStatus(repoName);
+    const status: RepositoryIndexStatus = {
+      repo: repository.name,
+      backend: existing?.backend ?? this.lexicalBackend.kind,
+      state: "stale",
+      lastIndexedAt: existing?.lastIndexedAt,
+      symbolState:
+        existing?.symbolState === "not_indexed" || existing?.symbolState === undefined ? existing?.symbolState : "stale",
+      symbolLastIndexedAt: existing?.symbolLastIndexedAt,
+      symbolCount: existing?.symbolCount,
+      detail,
+    };
+
+    await this.metadataStore.setIndexStatus(status);
+    return status;
+  }
+
+  private async refreshRepositoryInternal(repoName: string): Promise<RepositoryIndexStatus> {
+    const repository = await this.registry.getRepository(repoName);
+    if (!repository) {
+      throw new CodeAtlasError(`Unknown repository: ${repoName}`);
+    }
+
+    const existing = await this.metadataStore.getIndexStatus(repoName);
+    await this.metadataStore.setIndexStatus({
+      repo: repository.name,
+      backend: existing?.backend ?? this.lexicalBackend.kind,
+      state: "indexing",
+      lastIndexedAt: existing?.lastIndexedAt,
+      symbolState: "indexing",
+      symbolLastIndexedAt: existing?.symbolLastIndexedAt,
+      symbolCount: existing?.symbolCount,
+      detail: "Repository refresh in progress",
+    });
 
     const lexicalStatus = await this.lexicalBackend.prepareRepository(repository);
     const indexedAt = new Date().toISOString();
@@ -74,6 +152,7 @@ export class IndexCoordinator {
           repo: repoName,
           backend: this.lexicalBackend.kind,
           state: "not_indexed",
+          symbolState: "not_indexed",
         },
       ];
     }
@@ -88,6 +167,7 @@ export class IndexCoordinator {
           repo: repository.name,
           backend: this.lexicalBackend.kind,
           state: "not_indexed",
+          symbolState: "not_indexed",
         }
       );
     });

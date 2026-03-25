@@ -2,7 +2,7 @@
 
 CodeAtlas is a local-first code retrieval platform for GitHub Copilot and other MCP clients.
 
-The core lexical retrieval foundation and Zoekt integration are implemented. Symbol-aware retrieval through `find_symbol` is partially implemented for TypeScript and JavaScript. Semantic and hybrid retrieval contracts are reserved and stable but remain placeholder implementations. See [docs/roadmap.md](docs/roadmap.md) for detailed phase status.
+The current project focus is Zoekt-backed lexical retrieval, repository-scoped indexing, and reliable refresh behavior after repository updates. `find_symbol` is available today but is backed by an experimental TypeScript and JavaScript-specific symbol index. `semantic_search` and `hybrid_search` remain reserved placeholder contracts rather than active implementation work. See [docs/roadmap.md](docs/roadmap.md) for detailed phase status.
 
 ## Design Constraints
 
@@ -24,16 +24,23 @@ The repository follows a package-oriented architecture:
 Current components:
 
 - Repository registry: local JSON-backed registry of repositories
-- Index coordinator: orchestration point for refresh, readiness, and status
-- Lexical backend abstraction: Zoekt is the intended primary backend; a ripgrep-backed bootstrap path remains available as a development fallback
-- Symbol extraction pipeline: local TypeScript-powered extraction for TS and JS repositories
-- Symbol index store: local JSON-backed symbol metadata per repository
-- Symbol search backend: local symbol lookup with exact, prefix, and substring matching
+- Index coordinator: orchestration point for repository-scoped refresh, readiness, and status
+- Lexical backend abstraction: Zoekt is the current primary backend; a ripgrep-backed bootstrap path remains available as a development or troubleshooting fallback
+- Symbol extraction pipeline: experimental TypeScript-powered extraction for TS and JS repositories
+- Symbol index store: local JSON-backed symbol metadata for the current experimental `find_symbol` path
+- Symbol search backend: targeted exact, prefix, and substring symbol lookup for the current experimental symbol path
 - Source reader: reads source ranges from registered repositories
-- Metadata store: local JSON-backed index status store
+- Metadata store: local JSON-backed index status store with `not_indexed`, `indexing`, `ready`, `stale`, and `error` states
 - MCP transport: stdio server exposing stable tool contracts
 
 All repository metadata, search execution, and source access are local. No cloud services are required.
+
+## Current Development Focus
+
+- validate Zoekt indexing correctness and repeated refresh after repository updates
+- measure large-repository indexing and query behavior with Zoekt as the primary backend
+- keep custom symbol extraction under evaluation instead of expanding its scope immediately
+- defer semantic and hybrid implementation work until Zoekt-first workflows are proven
 
 ## Stable MCP Tools
 
@@ -49,6 +56,8 @@ Implemented now:
 - `get_index_status`
 - `refresh_repo`
 
+`find_symbol` is implemented, but its current TS and JS-specific backing index is still under evaluation.
+
 Reserved with stable contracts (placeholder implementations):
 
 - `semantic_search`
@@ -58,7 +67,7 @@ These tools return structured placeholder responses today. Their input and outpu
 
 ## Search Result Contract
 
-Every search result uses the same structured shape:
+The `code_search`, `semantic_search`, and `hybrid_search` contracts share the same structured search result shape:
 
 ```json
 {
@@ -75,9 +84,10 @@ Every search result uses the same structured shape:
 Supported `source_type` values:
 
 - `lexical`
-- `symbol`
 - `semantic`
 - `hybrid`
+
+`find_symbol` is a separate MCP tool with its own symbol-oriented response shape.
 
 ## Project Structure
 
@@ -322,6 +332,13 @@ Backend behavior:
 - development fallback mode: if Zoekt is not configured or not available, the ripgrep path can still serve local development
 - semantic and hybrid retrieval depend on the same stable MCP contracts regardless of which lexical backend is active
 
+Current validation focus:
+
+- confirm lexical results stay correct after repository updates and repeated refreshes
+- measure indexing and query behavior on representative large repositories
+- improve readiness, fallback, and error diagnostics before expanding the retrieval surface
+- keep lexical readiness usable even when symbol freshness or symbol extraction fails
+
 ### How hybrid retrieval fits later
 
 The contract already reserves:
@@ -332,19 +349,19 @@ The contract already reserves:
 
 The future hybrid design can add semantic candidates and reranking behind the existing `SearchService` and `MetadataStore` seams. The MCP transport layer remains unchanged.
 
-### What phase 2 adds
+### Experimental symbol lookup
 
-The symbol-aware slice indexes top-level and nested TypeScript and JavaScript declarations locally during repository refresh. This enables symbol-oriented lookup through the `find_symbol` MCP tool without changing the existing lexical result shape or the reserved semantic and hybrid contracts. Language coverage beyond TS and JS is planned as future work.
+The current symbol-aware slice indexes top-level and nested TypeScript and JavaScript declarations locally during repository refresh. This enables a dedicated `find_symbol` MCP tool without changing the existing lexical result shape or the reserved semantic and hybrid contracts. The feature remains under evaluation and will be compared against Zoekt-first lexical workflows before any broader custom symbol indexing scope or deeper symbol work is considered.
 
 ### Agent retrieval policy
 
-For agent-style retrieval, CodeAtlas treats symbol, lexical, and semantic search as complementary layers.
+For agent-style retrieval today, CodeAtlas treats Zoekt-backed lexical search as the primary retrieval path.
 
-- when an agent already knows an exact symbol name, it should prefer `find_symbol` first, then use `read_source` to verify the code
 - when an agent knows an exact text token that is not necessarily a symbol, it should prefer lexical retrieval through `code_search`
-- when an agent only has a vague natural-language intent, it should use `semantic_search` as a recall layer once implemented, then verify candidates through symbol or lexical retrieval before acting on them
+- when an agent knows an exact TypeScript or JavaScript symbol name and wants a definition-oriented lookup, it can use `find_symbol` and then `read_source`
+- agents should not depend on `semantic_search` or `hybrid_search` today because those tools are still placeholder implementations
 
-This means semantic retrieval is intended to expand recall, while symbol and lexical retrieval remain the precision layers used to ground agent behavior.
+Today the recommended grounding path is Zoekt-backed lexical search plus `read_source`; symbol lookup is optional and still under evaluation.
 
 ## Tests
 
@@ -378,3 +395,4 @@ The workspace also recommends the `connor4312.esbuild-problem-matchers` extensio
 
 - [docs/architecture.md](docs/architecture.md)
 - [docs/roadmap.md](docs/roadmap.md)
+- [docs/zoekt-first-todo.md](docs/zoekt-first-todo.md)

@@ -25,7 +25,7 @@ export class SearchService {
     const repositories = await this.resolveRepositories(request.repos);
     const limit = this.resolveLimit(request.limit);
 
-    await Promise.all(repositories.map((repository) => this.indexCoordinator.ensureReady(repository.name)));
+    await Promise.all(repositories.map((repository) => this.indexCoordinator.ensureLexicalReady(repository.name)));
 
     const searchResults = await Promise.all(
       repositories.map((repository) => this.lexicalBackend.searchRepository(repository, { query: request.query, limit })),
@@ -78,7 +78,7 @@ export class SearchService {
     const repositories = await this.resolveRepositories(request.repos);
     const limit = this.resolveLimit(request.limit);
 
-    await Promise.all(repositories.map((repository) => this.indexCoordinator.ensureReady(repository.name)));
+    await Promise.all(repositories.map((repository) => this.indexCoordinator.ensureSymbolReady(repository.name)));
 
     const results = await Promise.all(
       repositories.map((repository) =>

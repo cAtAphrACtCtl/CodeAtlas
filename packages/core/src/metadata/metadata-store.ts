@@ -1,4 +1,4 @@
-export type IndexState = "not_indexed" | "ready" | "error";
+export type IndexState = "not_indexed" | "indexing" | "ready" | "stale" | "error";
 
 export interface RepositoryIndexStatus {
   repo: string;
