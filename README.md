@@ -2,9 +2,9 @@
 
 CodeAtlas is a local-first code retrieval platform for GitHub Copilot and other MCP clients.
 
-Phase 1 is intentionally scoped to lexical retrieval, local repository metadata, and stable MCP tool contracts. The implementation is usable immediately for local repositories while keeping clear seams for future semantic and hybrid retrieval.
+The core lexical retrieval foundation and Zoekt integration are implemented. Symbol-aware retrieval through `find_symbol` is partially implemented for TypeScript and JavaScript. Semantic and hybrid retrieval contracts are reserved and stable but remain placeholder implementations. See [docs/roadmap.md](docs/roadmap.md) for detailed phase status.
 
-## Phase 1 Goals
+## Design Constraints
 
 - Local indexing only
 - Local metadata and database only
@@ -15,19 +15,17 @@ Phase 1 is intentionally scoped to lexical retrieval, local repository metadata,
 
 ## Current Implementation
 
-The repository now follows a package-oriented architecture:
+The repository follows a package-oriented architecture:
 
-- `packages/core`: storage, indexing, retrieval, configuration, and discovery services
-- `packages/mcp-server`: MCP transport and tool registration
+- `packages/core`: configuration, registry, metadata, indexing, retrieval, and shared product logic
+- `packages/mcp-server`: MCP transport, tool schemas, handlers, and server bootstrap
 - `packages/vscode-extension`: VS Code command surface for repository discovery and configuration management
-
-CodeAtlas now includes a first slice of Phase 2 symbol-aware retrieval on top of the phase 1 lexical foundation.
 
 Current components:
 
 - Repository registry: local JSON-backed registry of repositories
 - Index coordinator: orchestration point for refresh, readiness, and status
-- Lexical backend abstraction: target production path is Zoekt-backed indexing, while the current repository still includes a local ripgrep-backed bootstrap path for development
+- Lexical backend abstraction: Zoekt is the intended primary backend; a ripgrep-backed bootstrap path remains available as a development fallback
 - Symbol extraction pipeline: local TypeScript-powered extraction for TS and JS repositories
 - Symbol index store: local JSON-backed symbol metadata per repository
 - Symbol search backend: local symbol lookup with exact, prefix, and substring matching
@@ -35,7 +33,7 @@ Current components:
 - Metadata store: local JSON-backed index status store
 - MCP transport: stdio server exposing stable tool contracts
 
-The phase 1 lexical implementation does not require any cloud services. All repository metadata, search execution, and source access are local.
+All repository metadata, search execution, and source access are local. No cloud services are required.
 
 ## Stable MCP Tools
 
@@ -51,12 +49,12 @@ Implemented now:
 - `get_index_status`
 - `refresh_repo`
 
-Reserved from day one with stable contracts:
+Reserved with stable contracts (placeholder implementations):
 
 - `semantic_search`
 - `hybrid_search`
 
-The semantic and hybrid tools currently return structured placeholder responses. Their input and output shapes are already defined so future backends can be added without changing the MCP tool names or result schema.
+These tools return structured placeholder responses today. Their input and output shapes are already defined so future backends can be added without changing the MCP tool names or result schema.
 
 ## Search Result Contract
 
@@ -311,18 +309,18 @@ without changing the MCP tool names or the result envelope.
 
 ### Zoekt backend integration
 
-The intended lexical direction is:
+The current lexical backend integration is:
 
 - `refresh_repo` builds or refreshes a Zoekt index for one repository
 - `code_search` queries the Zoekt-backed lexical index
 - metadata remains owned by CodeAtlas even when the lexical index files are produced by Zoekt tooling
-- the existing ripgrep path remains only as a bootstrap and development fallback mode
+- the ripgrep path remains as a bootstrap and development fallback mode
 
-The expected backend behavior is:
+Backend behavior:
 
 - production mode: Zoekt is the primary lexical engine
-- development fallback mode: if Zoekt is not configured or not available, the bootstrap ripgrep path can still serve local development
-- semantic and hybrid retrieval continue to depend on the same stable MCP contracts regardless of which lexical backend is active
+- development fallback mode: if Zoekt is not configured or not available, the ripgrep path can still serve local development
+- semantic and hybrid retrieval depend on the same stable MCP contracts regardless of which lexical backend is active
 
 ### How hybrid retrieval fits later
 
@@ -334,9 +332,9 @@ The contract already reserves:
 
 The future hybrid design can add semantic candidates and reranking behind the existing `SearchService` and `MetadataStore` seams. The MCP transport layer remains unchanged.
 
-### What phase 2 adds now
+### What phase 2 adds
 
-The current symbol-aware slice indexes top-level and nested TypeScript and JavaScript declarations locally during repository refresh. That enables symbol-oriented lookup through the new `find_symbol` MCP tool without changing the existing lexical result shape or the reserved semantic and hybrid contracts.
+The symbol-aware slice indexes top-level and nested TypeScript and JavaScript declarations locally during repository refresh. This enables symbol-oriented lookup through the `find_symbol` MCP tool without changing the existing lexical result shape or the reserved semantic and hybrid contracts. Language coverage beyond TS and JS is planned as future work.
 
 ### Agent retrieval policy
 
@@ -380,4 +378,3 @@ The workspace also recommends the `connor4312.esbuild-problem-matchers` extensio
 
 - [docs/architecture.md](docs/architecture.md)
 - [docs/roadmap.md](docs/roadmap.md)
-- [PROJECT_BOOTSTRAP.md](PROJECT_BOOTSTRAP.md)

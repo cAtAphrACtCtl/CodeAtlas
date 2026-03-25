@@ -60,8 +60,6 @@ Handled by:
 
 This layer maps stable external contracts to internal services. It should remain stable as internals evolve.
 
-## Phase 1 Components
-
 ## Package Layout
 
 The repository is split into three top-level packages.
@@ -164,47 +162,47 @@ Why this matters:
 - Zoekt provides the intended prebuilt lexical index for large repositories
 - the `SearchService` and MCP tools do not change
 
-### Zoekt Integration Direction
+### Zoekt Integration
 
 The lexical indexing decision is to use Zoekt directly rather than build a custom lexical engine inside CodeAtlas.
 
-That means:
+Current state:
 
-- `refresh_repo` should ultimately trigger a Zoekt repository index build or refresh
-- `code_search` should ultimately query Zoekt-backed lexical indexes
+- `refresh_repo` triggers a Zoekt repository index build or refresh
+- `code_search` queries Zoekt-backed lexical indexes
 - metadata remains owned by CodeAtlas even when lexical index files are produced by Zoekt
-- the ripgrep path is a bootstrap and fallback implementation, not the long-term primary backend
+- the ripgrep path is a bootstrap and fallback implementation, not the primary backend
 
-### Zoekt Backend Integration Plan
+### Zoekt Backend Integration
 
-The concrete integration plan is to keep the current lexical abstraction while changing the default implementation and runtime selection rules.
+The integration keeps the lexical abstraction while Zoekt serves as the default implementation.
 
 Backend selection rules:
 
-- default lexical backend target: Zoekt
+- default lexical backend: Zoekt
 - bootstrap fallback backend: ripgrep with naive scan fallback for development and troubleshooting
-- runtime should choose Zoekt when the configured Zoekt executables and index paths are available
-- runtime may fall back to the bootstrap backend only when configuration explicitly allows development fallback behavior
+- runtime chooses Zoekt when the configured Zoekt executables and index paths are available
+- runtime falls back to the bootstrap backend only when configuration explicitly allows development fallback behavior
 
 Refresh flow:
 
-- `register_repo` continues to trigger `refresh_repo`
+- `register_repo` triggers `refresh_repo`
 - `refresh_repo` calls the active lexical backend to build or refresh lexical state for exactly one repository
-- in Zoekt mode, that lexical refresh step should invoke Zoekt indexing for the repository root and configured index path
-- after lexical refresh completes, the same repository refresh cycle should continue through symbol extraction and metadata updates
+- in Zoekt mode, the lexical refresh step invokes Zoekt indexing for the repository root and configured index path
+- after lexical refresh completes, the same repository refresh cycle continues through symbol extraction and metadata updates
 
 Query flow:
 
-- `code_search` continues to call `SearchService.searchLexical`
+- `code_search` calls `SearchService.searchLexical`
 - `SearchService` remains unaware of whether lexical matches came from Zoekt or the bootstrap backend
-- in Zoekt mode, `searchRepository` should read ranked lexical hits from Zoekt output and normalize them into the existing result contract
+- in Zoekt mode, `searchRepository` reads ranked lexical hits from Zoekt output and normalizes them into the existing result contract
 - in bootstrap mode, the existing ripgrep-backed implementation remains available for development use
 
-Configuration direction:
+Configuration:
 
-- lexical backend configuration should move from a single ripgrep-only shape to a backend-specific configuration model
-- Zoekt configuration should include executable paths and index storage location
-- bootstrap fallback configuration should remain available but should be marked as development-only behavior
+- lexical backend configuration uses a backend-specific configuration model
+- Zoekt configuration includes executable paths and index storage location
+- bootstrap fallback configuration remains available but is treated as development-only behavior
 
 Implementation boundary:
 
@@ -236,7 +234,7 @@ Exposes stable tool contracts:
 - `get_index_status`
 - `refresh_repo`
 
-The `semantic_search` and `hybrid_search` tools exist now as placeholders so future retrieval upgrades do not require contract renames or transport changes.
+The `semantic_search` and `hybrid_search` tools exist as stable contract surfaces with placeholder implementations. Future retrieval upgrades will not require contract renames or transport changes.
 
 ### VS Code Extension
 
@@ -276,22 +274,26 @@ All retrieval paths converge on the same result shape:
 
 ## Upgrade Path To Hybrid Retrieval
 
-The design explicitly preserves the MCP boundary while allowing deeper internals later.
+The design preserves the MCP boundary while allowing deeper internals later.
 
-### Phase 2: symbol-aware retrieval
+### Phase 2: symbol-aware retrieval (partial)
 
-Add a symbol extraction pipeline and symbol index behind retrieval services.
+Symbol extraction pipeline and symbol index behind retrieval services.
 
-Impact:
+Current state:
 
 - implemented as local TypeScript-powered symbol extraction for TS and JS codebases
-- adds `find_symbol` as a dedicated symbol lookup surface while preserving existing lexical contracts
-- existing lexical MCP contracts unchanged
-- symbol refresh should remain coordinated with the same repository refresh lifecycle used for Zoekt
+- `find_symbol` is a dedicated symbol lookup surface while existing lexical contracts remain unchanged
+- symbol refresh is coordinated with the same repository refresh lifecycle used for Zoekt
+
+Remaining:
+
+- broaden language coverage beyond TS and JS
+- improve symbol ranking and filtering
 
 ### Symbol Index Flow
 
-The current symbol-aware path has two main execution flows: indexing and lookup.
+The symbol-aware path has two main execution flows: indexing and lookup.
 
 ```mermaid
 flowchart TD
@@ -327,17 +329,17 @@ Execution notes:
 - `find_symbol` does not re-parse the repository on every query; it reads the locally persisted symbol index and ranks matches from that cache.
 - `ensureReady` is the guard between lookup and indexing. If a repository has not been indexed yet, lookup will trigger the refresh path first.
 
-### Phase 3: chunk-based indexing and local embeddings
+### Phase 3: chunk-based indexing and local embeddings (planned)
 
 Add chunk storage and a local embedding pipeline.
 
 Impact:
 
-- metadata store may track chunk and embedding versions
-- semantic backend is introduced behind `semantic_search`
+- metadata store will track chunk and embedding versions
+- semantic backend will be introduced behind `semantic_search`
 - source result contract unchanged
 
-### Phase 4: vector search and hybrid ranking
+### Phase 4: vector search and hybrid ranking (planned)
 
 Add vector retrieval and hybrid candidate merging.
 
@@ -388,4 +390,4 @@ For the up-to-10GB repository target, the architecture assumes:
 - independent metadata and index state per repository
 - a Zoekt-backed lexical engine that avoids whole-workspace scans at query time
 
-The bootstrap implementation is intentionally conservative. It gets the public architecture right first so the move to Zoekt does not force transport redesign.
+The architecture is designed to be conservative about public contracts. It establishes the MCP boundary first so backend evolution does not force transport redesign.

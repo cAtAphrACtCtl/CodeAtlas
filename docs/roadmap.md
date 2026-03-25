@@ -1,129 +1,210 @@
 # CodeAtlas Roadmap
 
+This roadmap tracks implemented work, active hardening, and planned phases separately so the project status stays aligned with the repository.
+
+CodeAtlas remains guided by a few stable constraints:
+
+- local-first indexing, metadata, and retrieval
+- multi-repository support with repository-scoped refresh
+- stable MCP tool contracts as internals evolve
+- clear separation between lexical, symbol, and future semantic retrieval layers
+
+## Current Snapshot
+
+Status today:
+
+- local repository registration, metadata, source reading, and repository-scoped refresh are implemented
+- `code_search` is implemented behind a lexical backend abstraction
+- Zoekt integration is present and is the intended primary lexical backend
+- ripgrep remains available as a bootstrap or development fallback
+- `find_symbol` is implemented with a local TS and JS symbol indexing path
+- `semantic_search` and `hybrid_search` already exist as stable MCP contract surfaces but still return structured placeholder responses
+
+Current near-term focus:
+
+- finish Zoekt operational hardening and large-repository validation
+- improve symbol coverage and ranking quality
+- add clearer operational diagnostics, refresh control, and evaluation coverage
+
 ## Phase 1: Local Lexical Retrieval Foundation
 
-Status: core scaffolding implemented; lexical backend direction updated
+Status: implemented
 
-Deliverables:
+Delivered:
 
 - local repository registry
 - local metadata store
-- index coordination layer
-- lexical search backend abstraction
-- usable lexical search implementation for local development
-- MCP server skeleton with stable tool contracts
-- source reading by line range
+- repository-scoped index coordination
+- lexical backend abstraction
+- usable local lexical retrieval path
+- MCP server with stable tool contracts for core retrieval flows
+- source reading by repository-relative path and line range
 - basic unit and integration test scaffolding
 
-Exit criteria:
+Exit criteria met:
 
 - multiple repositories can be registered locally
-- code can be searched through MCP using `code_search`
-- source can be read with `read_source`
-- repository status can be refreshed independently
-
-Notes:
-
-- the current repository contains a ripgrep-backed lexical path as a bootstrap implementation
-- the roadmap direction is to replace that bootstrap lexical path with Zoekt as the primary lexical indexing engine
+- code can be searched through `code_search`
+- source can be read through `read_source`
+- repository status can be refreshed independently through `refresh_repo`
 
 ## Phase 1.5: Zoekt-Backed Lexical Indexing
 
-Planned additions:
-
-- integrate Zoekt as the default lexical indexing and retrieval backend
-- build and refresh Zoekt indexes per repository instead of relying on ad hoc query-time scanning
-- store Zoekt index readiness and refresh metadata through the existing metadata store
-- preserve the existing `code_search` MCP contract while swapping the underlying engine
-- introduce runtime backend selection so Zoekt is the default and ripgrep remains a development-only fallback path
-- update lexical backend configuration from a ripgrep-specific shape to a backend-specific configuration model
-
-Exit criteria:
-
-- `refresh_repo` builds or refreshes a Zoekt index for one repository without rebuilding others
-- `code_search` reads lexical results from Zoekt rather than direct ripgrep execution
-- large repository lexical search performance is validated against interactive MCP usage expectations
-- fallback scanning is reduced to a bootstrap or troubleshooting path rather than the primary backend
-- runtime behavior clearly distinguishes production Zoekt mode from development fallback mode
-
-## Phase 2: Symbol-Aware Retrieval
-
-Status: initial implementation added
+Status: hardening
 
 Delivered so far:
 
-- symbol extraction pipeline
-- symbol index storage
-- symbol-oriented search service
+- Zoekt lexical backend adapter
+- runtime backend selection between Zoekt and ripgrep
+- repository-scoped lexical refresh flow through the existing coordinator
+- Windows-native and WSL/Linux configuration examples
+- Windows installer scripts with source-build fallback for Zoekt binaries
+
+Remaining work:
+
+- validate interactive query latency and refresh cost on representative large repositories
+- improve diagnostics for backend misconfiguration and recovery
+- make fallback behavior more explicit in metadata and user-visible status
+- tighten operational guidance around when ripgrep fallback is acceptable
+
+Exit criteria:
+
+- `refresh_repo` refreshes exactly one repository through Zoekt without rebuilding unrelated repositories
+- `code_search` uses Zoekt when configured and available
+- ripgrep fallback is clearly treated as development or troubleshooting behavior rather than the default production path
+- backend readiness and failure states are explicit in metadata and user-visible results
+
+## Phase 2: Symbol-Aware Retrieval
+
+Status: partial
+
+Delivered so far:
+
+- local TypeScript and JavaScript symbol extraction during repository refresh
+- local symbol index storage
+- symbol search backend with exact, prefix, and substring matching
 - `find_symbol` MCP tool
+- query-time readiness checks that stay aligned with repository refresh behavior
 
-Remaining additions:
+Remaining work:
 
-- broaden language coverage beyond the current TS and JS extraction path
-- improve symbol ranking and filtering
-- add deeper symbol relationship traversal if needed
+- broaden language coverage beyond the current TS and JS path
+- improve ranking and filtering for common symbol lookup workflows
+- add deeper symbol relationships only if real usage justifies the added complexity
+- add stronger regression coverage for ranking behavior and partial failure cases
 
-Notes:
+Exit criteria:
 
-- keep search result contracts aligned with existing result structure where possible
-- do not push symbol semantics into the lexical transport boundary
-- symbol indexing should align its refresh lifecycle with Zoekt-backed repository refreshes
+- exact symbol lookup works reliably for supported languages
+- symbol indexing failure remains explicit and does not mask lexical readiness state
+- symbol ranking behavior is covered by representative tests and query cases
+- symbol indexing stays aligned with repository-scoped refresh semantics
+
+## Phase 2.5: Operational Hardening And Evaluation
+
+Status: planned
+
+Why this phase exists:
+
+- core retrieval capabilities are already usable
+- operational safety, measurability, and recovery behavior need to catch up before larger semantic work is added
+
+Planned work:
+
+- refresh queueing and concurrency control
+- stale index detection and clearer repository status transitions
+- artifact cleanup and recovery flows for broken metadata or missing index files
+- benchmark suites for large repositories
+- retrieval quality datasets and regression evaluation
+- more explicit user-visible diagnostics for ready, stale, partial, and error states
+
+Exit criteria:
+
+- duplicate refresh requests are coalesced or controlled predictably
+- representative benchmark data exists for large-repository refresh and query behavior
+- retrieval quality regressions can be detected through repeatable evaluation
+- operators can distinguish ready, stale, partial, and error states without inspecting internals manually
 
 ## Phase 3: Chunk Indexing And Local Embeddings
+
+Status: planned
+
+Prerequisites:
+
+- operational hardening from phase 2.5
+- repository-scoped artifact lifecycle and evaluation foundations
 
 Planned additions:
 
 - chunking strategy per repository
+- local chunk storage
 - local embedding generation
-- local embedding artifact management
-- semantic candidate retrieval service
+- embedding artifact versioning and invalidation rules
+- semantic retrieval backend behind the existing `semantic_search` contract
 
-Notes:
+Contract rule:
 
-- implement `semantic_search` behind the already-defined MCP tool contract
-- reuse the existing metadata store interface for versioning and artifact state
+- `semantic_search` already exists as a stable MCP surface and should move from placeholder to real implementation without renaming the tool or reshaping the contract
+
+Exit criteria:
+
+- `semantic_search` returns local semantic candidates under the existing contract
+- chunk and embedding artifacts are repository-scoped and versioned
+- missing or stale embedding state is reported explicitly rather than appearing as silent success
+- semantic retrieval remains fully local-first
 
 ## Phase 4: Vector Retrieval And Hybrid Ranking
+
+Status: planned
 
 Planned additions:
 
 - vector search backend abstraction
-- hybrid candidate merge strategy
-- lexical and semantic score normalization
-- rank fusion or reranking stage
-- result explanations for hybrid decisions
-- agent-oriented retrieval policy that treats semantic results as recall candidates and lexical or symbol results as precision signals
+- lexical and semantic candidate merge strategy
+- score normalization and rank fusion
+- optional symbol-aware reranking or verification where it improves precision
+- explanation or diagnostic support for hybrid ranking decisions
 
-Notes:
+Contract rule:
 
-- implement `hybrid_search` behind the existing contract
-- preserve `source_type` values and result schema
+- `hybrid_search` must keep the current stable MCP surface while the internal ranking pipeline evolves
 
-## Cross-Cutting Work
+Exit criteria:
 
-Planned improvements across phases:
+- `hybrid_search` merges candidates without changing the tool contract
+- ranking behavior is benchmarked on representative query sets
+- cross-repository score normalization is deliberate and regression-tested
+- hybrid retrieval remains explainable enough to debug relevance regressions
 
-- move JSON metadata persistence to SQLite if operational needs grow
-- improve ignore rules and repository-specific indexing configuration
-- add benchmarking for very large repositories
-- add ranking evaluation datasets for retrieval quality
-- document and enforce an agent retrieval policy: exact symbols go to `find_symbol`, exact text goes to Zoekt-backed `code_search`, vague intent goes to `semantic_search` followed by lexical or symbol verification
-- document the Zoekt integration boundary so CodeAtlas does not drift into building a custom lexical indexing engine
+## Cross-Cutting Workstreams
 
-## Lexical Backend Decision
+### Platform Compatibility
 
-Direction:
+- keep Windows-native and WSL/Linux runtime models consistent
+- avoid automatic path translation assumptions between Windows and WSL
+- keep executable paths, repository paths, and index paths in the same runtime environment
 
-- do not build a custom lexical indexing engine inside CodeAtlas
-- use Zoekt directly for lexical index creation, refresh, and lookup
-- keep CodeAtlas responsible for orchestration, metadata, symbol indexing, semantic indexing, and MCP transport
-- keep the lexical backend abstraction so Zoekt remains an internal engine choice rather than an MCP contract change
+### Storage Evolution
 
-## Guardrails
+- keep JSON-backed registry and metadata while it remains operationally sufficient
+- move to SQLite only for concrete needs such as richer artifact bookkeeping, concurrent updates, or more complex status queries
 
-Across all phases:
+### Documentation And Contract Discipline
 
-- local-first only
-- no managed external vector database
-- no rewrite of MCP tool names or result schema
-- keep storage, indexing, retrieval, and transport separate
+- update `README.md`, `docs/architecture.md`, and `docs/roadmap.md` when behavior, boundaries, or project status changes
+- keep roadmap status aligned with implemented reality rather than aspiration
+- prefer additive MCP changes over breaking contract changes
+
+### Testing And Benchmarking
+
+- add unit tests for indexing, search, ranking, configuration, and backend selection behavior
+- add integration tests for MCP request and response behavior
+- keep placeholder contract tests for `semantic_search` and `hybrid_search` until those implementations land
+- add benchmark and evaluation coverage before expanding the retrieval surface significantly
+
+## Near-Term Priorities
+
+- finish Zoekt hardening and large-repository validation
+- improve symbol ranking quality and supported language coverage
+- add refresh control, stale detection, and clearer status diagnostics
+- build the evaluation foundation needed before implementing semantic retrieval
