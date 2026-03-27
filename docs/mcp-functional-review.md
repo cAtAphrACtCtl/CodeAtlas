@@ -28,6 +28,7 @@ That validates:
 The reusable script for this is:
 
 - `scripts/mcp-functional-review.mjs`
+- `scripts/mcp-refresh-eval.mjs` for refresh-after-update and latency validation through a real MCP session
 - `scripts/mcp-lexical-boundary-eval.mjs` for lexical boundary checks that compare ripgrep-backed search with the naive fallback path
 
 ### 2. Run against an isolated temporary config
@@ -148,6 +149,19 @@ Run the lexical boundary comparison:
 ```bash
 npm run mcp:lexical-boundary-eval
 ```
+
+Run the refresh evaluation against the current repository:
+
+```bash
+npm run mcp:refresh-eval -- --repo-root . --repo-name codeatlas-refresh-eval
+```
+
+This workflow reports:
+
+- initial indexing time
+- repeated refresh time
+- lexical query latency for the supplied probes
+- whether a changed token remains stale until `refresh_repo` and then updates correctly after refresh when Zoekt is active
 
 Run the automated verification suite afterward:
 

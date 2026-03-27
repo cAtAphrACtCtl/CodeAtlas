@@ -415,6 +415,7 @@ Execution notes:
 Operational note:
 
 - real MCP functional review should use the stdio-based workflow captured in `docs/mcp-functional-review.md` rather than handler-only testing when validating end-to-end behavior
+- repeated refresh-after-update and latency validation can now use the dedicated real-MCP workflow in `scripts/mcp-refresh-eval.mjs`
 - debug tracing is intentionally available across runtime, handler, indexing, backend, symbol, registry, metadata, and source-reader layers through `CODEATLAS_DEBUG`
 
 ### Phase 3: chunk-based indexing and local embeddings (deferred)

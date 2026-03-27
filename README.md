@@ -441,6 +441,7 @@ Available development tasks:
 - add the `trace` scope when you also want stderr/stdout tails from backend process failures, for example `CODEATLAS_DEBUG=zoekt,trace`
 - set `CODEATLAS_DEBUG=symbol-search` for focused symbol search diagnostics only
 - use `node "scripts/mcp-functional-review.mjs"` for a reusable real-MCP functional review against the current repository; it prefers Zoekt when Zoekt binaries are available in the active runtime
+- use `node "scripts/mcp-refresh-eval.mjs"` to measure initial indexing, repeated refresh, query latency, and refresh-after-update behavior through a real MCP session
 - use `node "scripts/mcp-lexical-boundary-eval.mjs"` to compare ripgrep-backed search behavior with naive fallback around skipped directories, hidden files, binary files, and max file size limits
 - see `docs/mcp-functional-review.md` for the repeatable functional review workflow
 

@@ -67,6 +67,7 @@ Delivered so far:
 - aligned ripgrep and naive fallback lexical boundary behavior for skipped directories and `maxBytesPerFile` handling
 - additive MCP-facing index diagnostics for degraded or misconfigured environments, with human-readable remediation guidance
 - broader debug tracing across runtime, MCP handlers, indexing, backend selection, symbol extraction, registry, metadata, and source reads via `CODEATLAS_DEBUG`
+- repeatable real-MCP refresh evaluation tooling for initial indexing time, repeated refresh time, query latency, and synthetic refresh-after-update validation
 
 Remaining work:
 

@@ -30,6 +30,11 @@ Current phase view:
 
 ## Immediate validation work
 
+Started now:
+
+- `npm run mcp:refresh-eval` runs an isolated real-MCP evaluation that measures initial indexing time, repeated refresh time, query latency, and synthetic refresh-after-update behavior.
+- Remaining work is to run that workflow on representative repositories and extend it to old, refreshing, and unavailable index states.
+
 - [ ] Validate `refresh_repo` after repository updates on representative repositories.
 - [ ] Measure initial indexing time, repeated refresh time, and query latency with Zoekt as the primary backend.
 - [ ] Verify MCP behavior when indexes are old, refreshing, or unavailable.

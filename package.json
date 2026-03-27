@@ -17,6 +17,7 @@
     "mcp:debug": "node --inspect=9230 --import tsx ./packages/mcp-server/src/main.ts",
     "mcp:watch": "node --watch --inspect=9230 --import tsx ./packages/mcp-server/src/main.ts",
     "mcp:functional-review": "node ./scripts/mcp-functional-review.mjs",
+    "mcp:refresh-eval": "node ./scripts/mcp-refresh-eval.mjs",
     "mcp:lexical-boundary-eval": "node ./scripts/mcp-lexical-boundary-eval.mjs",
     "dev:fullstack": "npm-run-all -p extension:watch mcp:watch",
     "start": "node dist/packages/mcp-server/src/main.js",
