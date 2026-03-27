@@ -21,6 +21,21 @@ export type LexicalBackendConfig =
 	| RipgrepLexicalBackendConfig
 	| ZoektLexicalBackendConfig;
 
+export interface DebugConfig {
+	/**
+	 * Debug scopes to enable. Use "*" to enable all scopes.
+	 * Available scopes: runtime, mcp, indexer, zoekt, ripgrep,
+	 * search-service, symbol-search, symbol-extractor, symbol-index,
+	 * source-reader, registry, metadata
+	 */
+	scopes: string[];
+	/**
+	 * Include verbose error stream tails (stderr/stdout) in error details.
+	 * Equivalent to adding "trace" to scopes.
+	 */
+	trace: boolean;
+}
+
 export interface CodeAtlasConfig {
 	registryPath: string;
 	metadataPath: string;
@@ -35,6 +50,7 @@ export interface CodeAtlasConfig {
 		serverName: string;
 		serverVersion: string;
 	};
+	debug: DebugConfig;
 }
 
 interface PartialRipgrepLexicalBackendConfig {
@@ -63,6 +79,7 @@ interface PartialCodeAtlasConfig {
 	lexicalBackend?: PartialLexicalBackendConfig;
 	search?: Partial<CodeAtlasConfig["search"]>;
 	mcp?: Partial<CodeAtlasConfig["mcp"]>;
+	debug?: Partial<DebugConfig>;
 }
 
 function resolvePath(baseDir: string, filePath: string): string {
@@ -172,6 +189,10 @@ export function defaultConfig(baseDir = process.cwd()): CodeAtlasConfig {
 			serverName: "codeatlas",
 			serverVersion: "0.1.0",
 		},
+		debug: {
+			scopes: [],
+			trace: false,
+		},
 	};
 }
 
@@ -218,6 +239,10 @@ export async function loadConfig(
 		mcp: {
 			...defaults.mcp,
 			...userConfig.mcp,
+		},
+		debug: {
+			...defaults.debug,
+			...userConfig.debug,
 		},
 	};
 }

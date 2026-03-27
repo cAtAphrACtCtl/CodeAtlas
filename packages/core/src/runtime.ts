@@ -1,4 +1,4 @@
-import { debugLog } from "./common/debug.js";
+import { debugLog, initializeDebug } from "./common/debug.js";
 import { type CodeAtlasConfig, loadConfig } from "./configuration/config.js";
 import { ConfigurationService } from "./configuration/configuration-service.js";
 import { RepositoryDiscoveryService } from "./discovery/repository-discovery.js";
@@ -38,6 +38,7 @@ export async function createCodeAtlasServices(
 ): Promise<CodeAtlasServices> {
 	const baseDir = options.baseDir ?? process.cwd();
 	const config = await loadConfig(options.configFilePath, baseDir);
+	initializeDebug(config.debug);
 	debugLog("runtime", "loaded configuration", {
 		baseDir,
 		configFilePath: options.configFilePath ?? process.env.CODEATLAS_CONFIG,

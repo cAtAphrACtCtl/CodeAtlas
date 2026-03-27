@@ -103,9 +103,45 @@ No `.cursorrules` file or `.cursor/rules/` directory exists in this repository.
 
 ## Debugging
 
-- Set `CODEATLAS_DEBUG=*` for broad diagnostics.
-- Useful scopes include `runtime`, `mcp`, `indexer`, `zoekt`, `ripgrep`, `search-service`, `symbol-search`, `symbol-extractor`, `source-reader`, `registry`, and `metadata`.
-- Add `trace` to include stderr/stdout tails from backend failures, for example `CODEATLAS_DEBUG=zoekt,trace`.
+Debug logging can be enabled via configuration file or environment variable.
+
+### Configuration File
+
+Add a `debug` section to your `codeatlas.json` config:
+```json
+{
+  "debug": {
+    "scopes": ["runtime", "mcp", "zoekt"],
+    "trace": true
+  }
+}
+```
+
+### Environment Variable
+
+Set `CODEATLAS_DEBUG` with comma-separated scopes:
+```bash
+CODEATLAS_DEBUG=runtime,mcp,zoekt,trace npm start
+```
+
+Environment variables are merged with config settings and take precedence.
+
+### Available Scopes
+
+- `runtime`: Configuration loading and service initialization
+- `mcp`: MCP handler invocations and responses
+- `indexer`: Index coordination and refresh operations
+- `zoekt`: Zoekt backend operations
+- `ripgrep`: Ripgrep fallback operations
+- `search-service`: Search service orchestration
+- `symbol-search`: Symbol search operations
+- `symbol-extractor`: Symbol extraction from source files
+- `symbol-index`: Symbol index storage operations
+- `source-reader`: Source file reading operations
+- `registry`: Repository registry operations
+- `metadata`: Index metadata operations
+- `trace`: Include verbose error streams (stderr/stdout tails)
+- `*`: Enable all scopes
 
 ## Import And Module Conventions
 

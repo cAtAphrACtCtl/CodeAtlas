@@ -21,5 +21,9 @@
   "mcp": {
     "serverName": "codeatlas",
     "serverVersion": "0.1.0"
+  },
+  "debug": {
+    "scopes": [],
+    "trace": false
   }
 }

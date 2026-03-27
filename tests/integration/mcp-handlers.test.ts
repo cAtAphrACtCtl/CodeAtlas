@@ -38,6 +38,10 @@ function createTestConfig(
 			serverName: "codeatlas",
 			serverVersion: "0.1.0",
 		},
+		debug: {
+			scopes: [],
+			trace: false,
+		},
 	};
 }
 
@@ -275,6 +279,10 @@ test("MCP handlers attach friendly diagnostics when configured Zoekt is unavaila
 			mcp: {
 				serverName: "codeatlas",
 				serverVersion: "0.1.0",
+			},
+			debug: {
+				scopes: [],
+				trace: false,
 			},
 		},
 		registry: {
