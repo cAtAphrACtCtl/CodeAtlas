@@ -1,3 +1,6 @@
+import { appendFileSync, mkdirSync } from "node:fs";
+import path from "node:path";
+
 import type { DebugConfig } from "../configuration/config.js";
 
 /**
@@ -26,15 +29,70 @@ import type { DebugConfig } from "../configuration/config.js";
  * - *: Enable all scopes
  */
 
-const envFlags = new Set(
-	(process.env.CODEATLAS_DEBUG ?? "")
-		.split(",")
-		.map((value) => value.trim().toLowerCase())
-		.filter(Boolean),
-);
-
 let configFlags = new Set<string>();
 let configTrace = false;
+let ensuredLogDirectory: string | undefined;
+let reportedLogWriteFailure = false;
+
+function getEnvFlags(): Set<string> {
+	return new Set(
+		(process.env.CODEATLAS_DEBUG ?? "")
+			.split(",")
+			.map((value) => value.trim().toLowerCase())
+			.filter(Boolean),
+	);
+}
+
+function getLogFilePath(): string | undefined {
+	const value = process.env.CODEATLAS_LOG_FILE?.trim();
+	return value ? value : undefined;
+}
+
+function ensureLogDirectory(logFilePath: string): void {
+	const directory = path.dirname(logFilePath);
+	if (ensuredLogDirectory === directory) {
+		return;
+	}
+
+	mkdirSync(directory, { recursive: true });
+	ensuredLogDirectory = directory;
+}
+
+function formatLogLine(
+	scope: string,
+	message: string,
+	details?: Record<string, unknown>,
+): string {
+	const prefix = `[${new Date().toISOString()}] [codeatlas:${scope}] ${message}`;
+	if (!details) {
+		return prefix;
+	}
+
+	return `${prefix} ${JSON.stringify(details)}`;
+}
+
+function mirrorLogLine(logLine: string): void {
+	const logFilePath = getLogFilePath();
+	if (!logFilePath) {
+		return;
+	}
+
+	try {
+		ensureLogDirectory(logFilePath);
+		appendFileSync(logFilePath, `${logLine}\n`, "utf8");
+		reportedLogWriteFailure = false;
+	} catch (error) {
+		if (reportedLogWriteFailure) {
+			return;
+		}
+
+		reportedLogWriteFailure = true;
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(
+			`[codeatlas:runtime] failed to write debug log file ${JSON.stringify({ logFilePath, message })}`,
+		);
+	}
+}
 
 /**
  * Initialize debug logging from configuration.
@@ -50,6 +108,7 @@ export function initializeDebug(config: DebugConfig): void {
 
 function isEnabled(scope: string): boolean {
 	const normalizedScope = scope.toLowerCase();
+	const envFlags = getEnvFlags();
 	return (
 		envFlags.has("*") ||
 		envFlags.has(normalizedScope) ||
@@ -63,6 +122,7 @@ function tailLines(value: string, count: number): string[] {
 }
 
 function includeVerboseErrorStreams(): boolean {
+	const envFlags = getEnvFlags();
 	return envFlags.has("trace") || configTrace;
 }
 
@@ -140,10 +200,7 @@ export function debugLog(
 		return;
 	}
 
-	if (details) {
-		console.error(`[codeatlas:${scope}] ${message} ${JSON.stringify(details)}`);
-		return;
-	}
-
-	console.error(`[codeatlas:${scope}] ${message}`);
+	const logLine = formatLogLine(scope, message, details);
+	console.error(logLine);
+	mirrorLogLine(logLine);
 }

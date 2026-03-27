@@ -73,6 +73,37 @@ Important boundary:
 - external dependency installation stays outside MCP and remains a manual script or operator action
 - Zoekt setup is still handled through the repository scripts and example configs rather than a new MCP install tool
 
+## Debug Logging
+
+CodeAtlas debug logging stays stderr-first so it works in terminals, debugger consoles, and MCP host processes without an IDE-specific integration layer.
+
+- Enable scopes with `CODEATLAS_DEBUG`, for example `CODEATLAS_DEBUG=mcp,search-service,ripgrep,trace`
+- Mirror the same log stream to a file with `CODEATLAS_LOG_FILE`, for example `CODEATLAS_LOG_FILE=./data/debug/codeatlas.log`
+- Configuration file `debug.scopes` and `debug.trace` still work, but `CODEATLAS_DEBUG` is the fastest way to turn logging on for local troubleshooting
+
+For agent-focused local MCP verification on Windows, use the dedicated startup script:
+
+```powershell
+npm run mcp:agent
+```
+
+That command launches the MCP server with agent-oriented scopes and writes to a dedicated log file at `data/debug/codeatlas.agent.log`.
+
+Use this flow when you need to prove that a real MCP client request hit the local server:
+
+1. Run `npm run mcp:agent`
+2. Use a real MCP client to call `register_repo`, `find_symbol`, or `code_search`
+3. Inspect `data/debug/codeatlas.agent.log` for `codeatlas:mcp` and `codeatlas:search-service` lines
+
+On Windows PowerShell, a practical local troubleshooting launch looks like this:
+
+```powershell
+$env:CODEATLAS_CONFIG='C:\git\GitHub\LukeLu\CodeAtlas\config\codeatlas.windows.example.json'
+$env:CODEATLAS_DEBUG='runtime,mcp,search-service,ripgrep,zoekt,trace'
+$env:CODEATLAS_LOG_FILE='C:\git\GitHub\LukeLu\CodeAtlas\data\debug\codeatlas.log'
+node --import tsx .\packages\mcp-server\src\main.ts
+```
+
 ## Search Result Contract
 
 The `code_search`, `semantic_search`, and `hybrid_search` contracts share the same structured search result shape:

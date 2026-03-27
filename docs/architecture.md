@@ -218,6 +218,12 @@ Current coupling note:
 - the current implementation couples lexical refresh and experimental symbol extraction in one repository refresh cycle
 - this keeps readiness simple, but it also mixes pure Zoekt validation cost with symbol extraction cost
 - near-term architecture work is to validate Zoekt indexing and repository update behavior first, then decide whether symbol refresh should be decoupled or reduced
+
+## Debug Observability
+
+- Runtime and MCP diagnostics remain transport-agnostic and stderr-first.
+- Debug scopes are enabled through configuration or `CODEATLAS_DEBUG`.
+- For low-cost local troubleshooting, stderr logs can be mirrored to a file with `CODEATLAS_LOG_FILE` without introducing IDE-specific logging dependencies into `packages/core` or `packages/mcp-server`.
 - lexical readiness is now tracked separately from symbol readiness so lexical search can remain usable when symbol state is stale or failed
 
 ### Readiness And Refresh Flow

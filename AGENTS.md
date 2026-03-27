@@ -5,6 +5,8 @@ It replaces and improves the previous root `AGENTS.md`.
 It incorporates `.github/copilot-instructions.md`.
 No `.cursorrules` file or `.cursor/rules/` directory exists in this repository.
 
+Operational workflows, command catalogs, and debug procedures live in `docs/agent-operations.md`.
+
 ## Repository Snapshot
 
 - CodeAtlas is a local-first code retrieval platform for MCP clients and agent workflows.
@@ -12,6 +14,7 @@ No `.cursorrules` file or `.cursor/rules/` directory exists in this repository.
 - Runtime: Node `>=20.11.0`.
 - Tooling: TypeScript, `tsx`, Node test runner, npm workspaces, esbuild.
 - Module system: ESM with `NodeNext`.
+- Detailed command and debugging workflows: `docs/agent-operations.md`
 
 ## Core Product Rules
 
@@ -59,110 +62,11 @@ No `.cursorrules` file or `.cursor/rules/` directory exists in this repository.
 - If asked to test search in an agent sandbox, rely on the ripgrep fallback if Zoekt is not installed in the runtime.
 - Never run destructive git commands (like `git reset --hard` or `git push --force`).
 
-## Build And Dev Commands
+## Agent Verification Workflow
 
-- Install dependencies: `npm install`
-- Build everything: `npm run build`
-- Build server package: `npm run build:server`
-- Build VS Code extension: `npm run extension:build`
-- Package VS Code extension: `npm run extension:package`
-- Run MCP server from source: `npm run dev`
-- Run built MCP server: `npm start`
-- Start MCP server with inspector: `npm run mcp:debug`
-- Watch MCP server: `npm run mcp:watch`
-- Full-stack watch loop: `npm run dev:fullstack`
-- Watch VS Code extension: `npm run extension:watch`
-- Typecheck VS Code extension: `npm run extension:typecheck`
-
-## Test Commands
-
-- Run the full suite: `npm test`
-- Run one unit test file: `npm exec tsx --test tests/unit/config.test.ts`
-- Run one integration test file: `npm exec tsx --test tests/integration/mcp-handlers.test.ts`
-- Run any single test file: `npm exec tsx --test <file>`
-- Run a named test inside one file: `npm exec tsx --test <file> --test-name-pattern "exact symbol search"`
-- Tests use the Node test runner via `tsx`, not Vitest or Jest.
-- ALWAYS clean up temp directories in tests using `t.after()` and `rm(dir, { recursive: true, force: true })`.
-
-## Lint And Quality Gates
-
-- There is no dedicated ESLint, Prettier, Biome, or standalone lint script configured.
-- Use TypeScript correctness as the enforced quality gate.
-- For server and core changes, run `npm run build:server`.
-- For VS Code extension changes, run `npm run extension:typecheck`.
-- For cross-package changes, run `npm run build` plus relevant tests.
-
-## Useful Maintenance Commands
-
-- Windows Zoekt install with fallback: `npm run zoekt:install:windows`
-- Windows Zoekt source build: `npm run zoekt:install:windows:source`
-- Migrate legacy Zoekt index layout: `npm run zoekt:migrate-index -- --from <dir> --repo <name> --root-path <path> --force-single-repo`
-- Functional MCP review: `npm run mcp:functional-review`
-- Refresh evaluation workflow: `npm run mcp:refresh-eval`
-- Lexical boundary evaluation: `npm run mcp:lexical-boundary-eval`
-
-## Debugging
-
-Debug logging can be enabled via configuration file or environment variable.
-
-### Configuration File
-
-Add a `debug` section to your `codeatlas.json` config:
-```json
-{
-  "debug": {
-    "scopes": ["runtime", "mcp", "zoekt"],
-    "trace": true
-  }
-}
-```
-
-### Environment Variable
-
-Set `CODEATLAS_DEBUG` with comma-separated scopes:
-```bash
-CODEATLAS_DEBUG=runtime,mcp,zoekt,trace npm start
-```
-
-Environment variables are merged with config settings and take precedence.
-
-### Available Scopes
-
-- `runtime`: Configuration loading and service initialization
-- `mcp`: MCP handler invocations and responses
-- `indexer`: Index coordination and refresh operations
-- `zoekt`: Zoekt backend operations
-- `ripgrep`: Ripgrep fallback operations
-- `search-service`: Search service orchestration
-- `symbol-search`: Symbol search operations
-- `symbol-extractor`: Symbol extraction from source files
-- `symbol-index`: Symbol index storage operations
-- `source-reader`: Source file reading operations
-- `registry`: Repository registry operations
-- `metadata`: Index metadata operations
-- `trace`: Include verbose error streams (stderr/stdout tails)
-- `*`: Enable all scopes
-
-## Import And Module Conventions
-
-- Use ESM imports with explicit `.js` suffixes in TypeScript source files.
-- Group imports in this order: Node built-ins, external packages, local runtime imports.
-- Separate import groups with a blank line.
-- Use `import type` for type-only imports.
-- Prefer named exports over default exports.
-- Re-export shared public surfaces from package entry files such as `packages/core/src/index.ts`.
-- Keep cross-package imports explicit and relative; avoid path alias magic.
-
-## Formatting And Lint Constraints
-
-- The project uses **Biome** (`@biomejs/biome`) to enforce all code style, formatting, and linting rules at compile time.
-- Do not guess or search for formatting rules manually. Just run `npm run format` to auto-format the code and `npm run lint` to catch style/lint errors.
-- Biome handles indentation, quotes, trailing commas, and semicolons automatically.
-- Rely on TypeScript's `strict` mode compiler errors to catch typing and structural issues at compile time.
-- To check your work:
-  - `npm run format` (auto-formats everything)
-  - `npm run lint` (checks for unused variables, missing types, and Biome lint rules)
-  - `npm run build:server` or `npm run extension:typecheck` (checks TypeScript types)
+- Prefer `npm run mcp:agent` when you need to prove a real MCP client request hit the local server
+- Inspect `data/debug/codeatlas.agent.log` for `codeatlas:mcp` and `codeatlas:search-service` lines after the client call
+- Use the broader command catalog and debug details in `docs/agent-operations.md`
 
 ## TypeScript Style
 
@@ -174,6 +78,7 @@ Environment variables are merged with config settings and take precedence.
 - Prefer constructor injection for services and adapters.
 - Use `readonly` for class fields and injected dependencies when mutation is not intended.
 - Avoid `any`. Use `unknown`, exact interfaces, or local adapter types.
+- See `docs/agent-operations.md` for the operational lint, format, and validation commands.
 
 ## Naming, Errors, And MCP Rules
 

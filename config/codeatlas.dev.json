@@ -1,0 +1,23 @@
+{
+  "registryPath": "../data/registry/repositories.local.json",
+  "metadataPath": "../data/metadata/index-status.local.json",
+  "indexRoot": "../data/indexes",
+  "lexicalBackend": {
+    "kind": "ripgrep",
+    "executable": "rg",
+    "fallbackToNaiveScan": true
+  },
+  "search": {
+    "defaultLimit": 20,
+    "maxLimit": 100,
+    "maxBytesPerFile": 262144
+  },
+  "mcp": {
+    "serverName": "codeatlas",
+    "serverVersion": "0.1.0"
+  },
+  "debug": {
+    "scopes": ["runtime", "mcp", "registry"],
+    "trace": true
+  }
+}
