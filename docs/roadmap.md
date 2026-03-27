@@ -64,6 +64,7 @@ Delivered so far:
 - per-repository Zoekt index isolation with dedicated subdirectories per repo
 - unified `indexRoot` config derivation so Zoekt index root is derived automatically from the top-level `indexRoot`
 - migration script for moving from the old shared flat Zoekt index layout to per-repository directories
+- aligned ripgrep and naive fallback lexical boundary behavior for skipped directories and `maxBytesPerFile` handling
 
 Remaining work:
 

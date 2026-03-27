@@ -197,6 +197,7 @@ Backend selection rules:
 - bootstrap fallback backend: ripgrep with naive scan fallback for development and troubleshooting
 - runtime chooses Zoekt when the configured Zoekt executables and index paths are available
 - runtime falls back to the bootstrap backend only when configuration explicitly allows development fallback behavior
+- the ripgrep-backed path now applies the same skip rules in both ripgrep and naive fallback modes for `.git`, `node_modules`, `dist`, `data`, and `.next`, while still allowing hidden top-level files and respecting `maxBytesPerFile`
 
 Refresh flow:
 

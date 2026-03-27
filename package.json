@@ -17,6 +17,7 @@
     "mcp:debug": "node --inspect=9230 --import tsx ./packages/mcp-server/src/main.ts",
     "mcp:watch": "node --watch --inspect=9230 --import tsx ./packages/mcp-server/src/main.ts",
     "mcp:functional-review": "node ./scripts/mcp-functional-review.mjs",
+    "mcp:lexical-boundary-eval": "node ./scripts/mcp-lexical-boundary-eval.mjs",
     "dev:fullstack": "npm-run-all -p extension:watch mcp:watch",
     "start": "node dist/packages/mcp-server/src/main.js",
     "zoekt:install:windows": "powershell -ExecutionPolicy Bypass -File ./scripts/install-zoekt-windows.ps1 -FallbackToSourceBuild",
@@ -25,7 +26,7 @@
     "extension:typecheck": "npm run typecheck --workspace codeatlas-vscode-extension",
     "extension:watch": "npm run watch --workspace codeatlas-vscode-extension",
     "extension:package": "npm run package:vsix --workspace codeatlas-vscode-extension",
-    "test": "tsx --test tests/unit/config.test.ts tests/unit/config-index-root.test.ts tests/unit/repo-artifact-path.test.ts tests/unit/search-service.test.ts tests/unit/index-coordinator.test.ts tests/unit/symbol-extractor.test.ts tests/unit/lexical-backend-factory.test.ts tests/integration/mcp-handlers.test.ts"
+    "test": "tsx --test tests/unit/config.test.ts tests/unit/config-index-root.test.ts tests/unit/repo-artifact-path.test.ts tests/unit/search-service.test.ts tests/unit/index-coordinator.test.ts tests/unit/symbol-extractor.test.ts tests/unit/lexical-backend-factory.test.ts tests/unit/ripgrep-lexical-search-backend.test.ts tests/integration/mcp-handlers.test.ts"
   },
   "engines": {
     "node": ">=20.11.0"
