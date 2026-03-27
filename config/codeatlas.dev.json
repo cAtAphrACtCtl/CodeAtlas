@@ -17,6 +17,7 @@
     "serverVersion": "0.1.0"
   },
   "debug": {
+    "level": "debug",
     "scopes": ["runtime", "mcp", "registry"],
     "trace": true
   }

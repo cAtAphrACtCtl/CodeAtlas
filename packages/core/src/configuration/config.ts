@@ -21,10 +21,31 @@ export type LexicalBackendConfig =
 	| RipgrepLexicalBackendConfig
 	| ZoektLexicalBackendConfig;
 
+/**
+ * Minimum log level to emit.
+ *
+ * - `error`: only error messages
+ * - `warn`:  error + warning messages
+ * - `info`:  error + warning + informational messages (default)
+ * - `debug`: all messages, additionally filtered by `scopes`
+ */
+export type LogLevel = "error" | "warn" | "info" | "debug";
+
 export interface DebugConfig {
 	/**
-	 * Debug scopes to enable. Use "*" to enable all scopes.
-	 * Available scopes: runtime, mcp, indexer, zoekt, ripgrep,
+	 * Minimum log level to emit. Defaults to `"info"`.
+	 */
+	level: LogLevel;
+	/**
+	 * Optional log file path. When set, all emitted log lines are also
+	 * appended to this file. Relative paths are resolved from the config
+	 * file directory. Overrides the `CODEATLAS_LOG_FILE` environment variable
+	 * when both are present.
+	 */
+	file?: string;
+	/**
+	 * Debug scopes to enable for `debug`-level messages. Use `"*"` to enable
+	 * all scopes. Available scopes: runtime, mcp, indexer, zoekt, ripgrep,
 	 * search-service, symbol-search, symbol-extractor, symbol-index,
 	 * source-reader, registry, metadata
 	 */
@@ -190,6 +211,7 @@ export function defaultConfig(baseDir = process.cwd()): CodeAtlasConfig {
 			serverVersion: "0.1.0",
 		},
 		debug: {
+			level: "info" as const,
 			scopes: [],
 			trace: false,
 		},
@@ -243,6 +265,10 @@ export async function loadConfig(
 		debug: {
 			...defaults.debug,
 			...userConfig.debug,
+			file:
+				userConfig.debug?.file
+					? resolvePath(configDir, userConfig.debug.file)
+					: undefined,
 		},
 	};
 }

@@ -23,6 +23,7 @@
     "serverVersion": "0.1.0"
   },
   "debug": {
+    "level": "info",
     "scopes": [],
     "trace": false
   }

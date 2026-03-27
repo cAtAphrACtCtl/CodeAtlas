@@ -219,11 +219,15 @@ Current coupling note:
 - this keeps readiness simple, but it also mixes pure Zoekt validation cost with symbol extraction cost
 - near-term architecture work is to validate Zoekt indexing and repository update behavior first, then decide whether symbol refresh should be decoupled or reduced
 
-## Debug Observability
+## Logging and Debug Observability
 
 - Runtime and MCP diagnostics remain transport-agnostic and stderr-first.
-- Debug scopes are enabled through configuration or `CODEATLAS_DEBUG`.
-- For low-cost local troubleshooting, stderr logs can be mirrored to a file with `CODEATLAS_LOG_FILE` without introducing IDE-specific logging dependencies into `packages/core` or `packages/mcp-server`.
+- Log levels (`error`, `warn`, `info`, `debug`) are set via `config.debug.level` (default `"info"`) or the `CODEATLAS_LOG_LEVEL` environment variable (env takes precedence).
+- `error`, `warn`, and `info` messages are emitted based on the configured minimum level alone.
+- `debug`-level messages additionally require the scope to be enabled via `config.debug.scopes` or `CODEATLAS_DEBUG`.
+- Log lines can be written to a file by setting `config.debug.file` (resolved relative to the config dir) or the `CODEATLAS_LOG_FILE` environment variable; the config path takes precedence when both are set.
+- Additional output sinks can be registered with `addLogSink` for IDE integrations without introducing IDE-specific dependencies into `packages/core` or `packages/mcp-server`.
+- The VSCode extension registers a `vscode.window.createOutputChannel("CodeAtlas")` sink on activation so all emitted log lines appear in the **CodeAtlas** output panel.
 - lexical readiness is now tracked separately from symbol readiness so lexical search can remain usable when symbol state is stale or failed
 
 ### Readiness And Refresh Flow

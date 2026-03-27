@@ -16,3 +16,4 @@ data/debug/*.log
 config/data/
 
 !.gitkeep
+symbols
