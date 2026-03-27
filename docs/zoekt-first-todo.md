@@ -1,6 +1,32 @@
 # Zoekt-First Follow-Up
 
-This file tracks the near-term work needed to validate CodeAtlas as a Zoekt-first local code search system before expanding the retrieval surface.
+This file tracks the current project snapshot and the near-term work needed to validate CodeAtlas as a Zoekt-first local code search system before expanding the retrieval surface.
+
+## Status snapshot
+
+Current phase view:
+
+| Bucket | Current state |
+| --- | --- |
+| Completed | Local repository registration, metadata, repository-scoped refresh, `code_search`, `read_source`, stable MCP tool contracts, Zoekt backend integration, per-repository Zoekt index isolation, and explicit `not_indexed` / `indexing` / `ready` / `stale` / `error` states are in place. |
+| In progress | Zoekt hardening is the current mainline: large-repository validation, refresh-after-update correctness, readiness and fallback diagnostics, and evaluation of the experimental TS/JS `find_symbol` path. |
+| Not started or deferred | Refresh queueing and concurrency control, automatic stale detection, artifact cleanup and recovery flows, repeatable benchmark and regression gates, and real `semantic_search` / `hybrid_search` implementations are still ahead. |
+| Risks and decisions | The project still needs proof that Zoekt refresh stays correct after repository updates, clear rules for when ripgrep fallback is acceptable, isolated measurement of symbol extraction cost, and a keep / limit / remove decision for custom symbol indexing. |
+
+## Top 3 priorities now
+
+1. Prove Zoekt refresh correctness and latency on real repositories.
+   - Validate `refresh_repo` after repository updates.
+   - Measure initial indexing time, repeated refresh time, and query latency.
+   - Verify MCP behavior when indexes are old, refreshing, or unavailable.
+2. Harden freshness, fallback, and operator-visible status.
+   - Decide how repository updates mark an index stale before the next refresh.
+   - Keep the last successful lexical index available while a refresh is running.
+   - Document when ripgrep fallback is acceptable versus a hard failure.
+3. Make a keep / limit / remove decision on custom symbol indexing.
+   - Compare `find_symbol` against Zoekt-first lexical workflows for definition lookup.
+   - Measure the refresh cost added by the current custom symbol extraction path.
+   - Do not expand custom symbol indexing scope until that decision is made.
 
 ## Immediate validation work
 
