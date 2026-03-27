@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -32,6 +32,64 @@ async function expectToolFailure(client, name, args, pattern) {
   assert.match(textContent, pattern);
 }
 
+async function exists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolvePreferredLexicalBackend(workspaceRoot) {
+  const windowsZoektIndex = path.join(workspaceRoot, ".tools", "zoekt", "source-win-bin", "zoekt-index.exe");
+  const windowsZoektSearch = path.join(workspaceRoot, ".tools", "zoekt", "source-win-bin", "zoekt.exe");
+  if ((await exists(windowsZoektIndex)) && (await exists(windowsZoektSearch))) {
+    return {
+      expectedBackend: "zoekt",
+      config: {
+        kind: "zoekt",
+        zoektIndexExecutable: windowsZoektIndex,
+        zoektSearchExecutable: windowsZoektSearch,
+        allowBootstrapFallback: true,
+        bootstrapFallback: {
+          kind: "ripgrep",
+          executable: "rg",
+          fallbackToNaiveScan: true,
+        },
+      },
+    };
+  }
+
+  const linuxZoektIndex = path.join(workspaceRoot, ".tools", "zoekt", "linux-bin", "zoekt-index");
+  const linuxZoektSearch = path.join(workspaceRoot, ".tools", "zoekt", "linux-bin", "zoekt");
+  if (process.platform !== "win32" && (await exists(linuxZoektIndex)) && (await exists(linuxZoektSearch))) {
+    return {
+      expectedBackend: "zoekt",
+      config: {
+        kind: "zoekt",
+        zoektIndexExecutable: linuxZoektIndex,
+        zoektSearchExecutable: linuxZoektSearch,
+        allowBootstrapFallback: true,
+        bootstrapFallback: {
+          kind: "ripgrep",
+          executable: "rg",
+          fallbackToNaiveScan: true,
+        },
+      },
+    };
+  }
+
+  return {
+    expectedBackend: "ripgrep",
+    config: {
+      kind: "ripgrep",
+      executable: "rg",
+      fallbackToNaiveScan: true,
+    },
+  };
+}
+
 async function main() {
   const workspaceRoot = process.cwd();
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-functional-review-"));
@@ -39,6 +97,7 @@ async function main() {
   const registryPath = path.join(tempRoot, "repositories.local.json");
   const metadataPath = path.join(tempRoot, "index-status.local.json");
   const indexRoot = path.join(tempRoot, "indexes");
+  const lexicalBackend = await resolvePreferredLexicalBackend(workspaceRoot);
 
   try {
     await writeFile(
@@ -48,11 +107,7 @@ async function main() {
           registryPath,
           metadataPath,
           indexRoot,
-          lexicalBackend: {
-            kind: "ripgrep",
-            executable: "rg",
-            fallbackToNaiveScan: true,
-          },
+          lexicalBackend: lexicalBackend.config,
           search: {
             defaultLimit: 20,
             maxLimit: 100,
@@ -120,6 +175,14 @@ async function main() {
       assert.equal(registerPayload.repository.name, "codeatlas-current");
       assert.equal(registerPayload.index_status.state, "ready");
       assert.equal(registerPayload.index_status.symbolState, "ready");
+      assert.equal(registerPayload.index_status.configuredBackend ?? registerPayload.index_status.backend, lexicalBackend.expectedBackend);
+      if (lexicalBackend.expectedBackend === "zoekt") {
+        assert.equal(
+          registerPayload.index_status.backend,
+          "zoekt",
+          `Expected Zoekt to be used during registration, but backend was ${registerPayload.index_status.backend}. Detail: ${registerPayload.index_status.detail ?? "none"}`,
+        );
+      }
       console.log("PASS register_repo indexes current repository successfully");
 
       await expectToolFailure(
@@ -139,6 +202,14 @@ async function main() {
       const statusPayload = statusResult.structuredContent;
       assert.equal(statusPayload.index_status.length, 1);
       assert.equal(statusPayload.index_status[0].state, "ready");
+      assert.equal(statusPayload.index_status[0].configuredBackend ?? statusPayload.index_status[0].backend, lexicalBackend.expectedBackend);
+      if (lexicalBackend.expectedBackend === "zoekt") {
+        assert.equal(
+          statusPayload.index_status[0].backend,
+          "zoekt",
+          `Expected Zoekt to remain active in get_index_status, but backend was ${statusPayload.index_status[0].backend}. Detail: ${statusPayload.index_status[0].detail ?? "none"}`,
+        );
+      }
       console.log("PASS get_index_status reports ready state");
 
       const searchResult = await callTool(client, "code_search", {
@@ -235,6 +306,14 @@ async function main() {
       });
       const refreshPayload = refreshResult.structuredContent;
       assert.equal(refreshPayload.index_status.state, "ready");
+      assert.equal(refreshPayload.index_status.configuredBackend ?? refreshPayload.index_status.backend, lexicalBackend.expectedBackend);
+      if (lexicalBackend.expectedBackend === "zoekt") {
+        assert.equal(
+          refreshPayload.index_status.backend,
+          "zoekt",
+          `Expected Zoekt to be used during refresh, but backend was ${refreshPayload.index_status.backend}. Detail: ${refreshPayload.index_status.detail ?? "none"}`,
+        );
+      }
       console.log("PASS refresh_repo refreshes current repository successfully");
     } finally {
       await client.close();
@@ -245,6 +324,7 @@ async function main() {
 
     console.log("REGISTRY_FILE", registryText);
     console.log("METADATA_FILE", metadataText);
+    console.log("LEXICAL_BACKEND", lexicalBackend.expectedBackend);
     console.log("STDERR", stderrChunks.join(""));
     console.log("Functional review completed successfully.");
   } finally {

@@ -428,7 +428,8 @@ For a smooth local development loop in VS Code:
 Available development tasks:
 
 - set `CODEATLAS_DEBUG=symbol-search` to emit compact symbol search diagnostics to stderr during MCP execution
-- use `node "scripts/mcp-functional-review.mjs"` for a reusable real-MCP functional review against the current repository
+- use `node "scripts/mcp-functional-review.mjs"` for a reusable real-MCP functional review against the current repository; it prefers Zoekt when Zoekt binaries are available in the active runtime
+- use `node "scripts/mcp-lexical-boundary-eval.mjs"` to compare ripgrep-backed search behavior with naive fallback around skipped directories, hidden files, binary files, and max file size limits
 - see `docs/mcp-functional-review.md` for the repeatable functional review workflow
 
 - `codeatlas: build server`

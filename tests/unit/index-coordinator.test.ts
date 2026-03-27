@@ -434,6 +434,67 @@ test("IndexCoordinator refreshes when stored ready metadata was produced by a di
   assert.equal(statuses.get(repository.name)?.backend, "ripgrep");
 });
 
+test("IndexCoordinator preserves the fallback backend while recording the configured backend after refresh", async (t) => {
+  const repositoryRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-configured-backend-"));
+  const symbolRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-configured-backend-symbols-"));
+  t.after(async () => {
+    await rm(repositoryRoot, { recursive: true, force: true });
+    await rm(symbolRoot, { recursive: true, force: true });
+  });
+
+  await mkdir(path.join(repositoryRoot, "src"), { recursive: true });
+  await writeFile(path.join(repositoryRoot, "src", "repo-a.ts"), "export const value = 1;\n", "utf8");
+
+  const repository = {
+    name: "repo-a",
+    rootPath: repositoryRoot,
+    registeredAt: new Date().toISOString(),
+  };
+
+  const registry: RepositoryRegistry = {
+    async listRepositories() {
+      return [repository];
+    },
+    async getRepository(name) {
+      return name === repository.name ? repository : null;
+    },
+    async registerRepository() {
+      return repository;
+    },
+  };
+
+  const statuses = new Map<string, RepositoryIndexStatus>();
+  const backend: LexicalSearchBackend = {
+    kind: "zoekt",
+    async prepareRepository(candidate) {
+      return {
+        repo: candidate.name,
+        backend: "ripgrep",
+        state: "ready",
+        detail: "fallback ready",
+      };
+    },
+    async searchRepository() {
+      return [];
+    },
+  };
+
+  const coordinator = new IndexCoordinator(
+    registry,
+    createMetadataStore(statuses),
+    backend,
+    new TypeScriptSymbolExtractor(),
+    new FileSymbolIndexStore(symbolRoot),
+  );
+
+  const ready = await coordinator.refreshRepository(repository.name);
+
+  assert.equal(ready.backend, "ripgrep");
+  assert.equal(ready.configuredBackend, "zoekt");
+  assert.equal(statuses.get(repository.name)?.backend, "ripgrep");
+  assert.equal(statuses.get(repository.name)?.configuredBackend, "zoekt");
+});
+
 test("IndexCoordinator can mark a repository stale", async () => {
   const repository = {
     name: "repo-a",

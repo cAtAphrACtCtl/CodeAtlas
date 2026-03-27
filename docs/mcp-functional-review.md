@@ -28,6 +28,7 @@ That validates:
 The reusable script for this is:
 
 - `scripts/mcp-functional-review.mjs`
+- `scripts/mcp-lexical-boundary-eval.mjs` for lexical boundary checks that compare ripgrep-backed search with the naive fallback path
 
 ### 2. Run against an isolated temporary config
 
@@ -39,6 +40,7 @@ The review script should always:
 - create temporary registry and metadata files
 - create a temporary index root
 - clean up automatically afterward
+- prefer Zoekt when Zoekt binaries are available in the same runtime as the MCP server; only fall back to ripgrep when Zoekt is unavailable
 
 This keeps the review deterministic and avoids polluting local state.
 
@@ -89,6 +91,7 @@ Guidelines:
 - keep MCP tool payloads unchanged
 - prefer summary counters and small samples over one-log-per-item output
 - make the scope string granular enough to turn on only the component you need
+- for lexical review, verify which backend was actually used instead of assuming the configured backend succeeded
 
 ### 5. Patch the product behavior, then add regression coverage
 
@@ -138,6 +141,12 @@ Run with symbol search tracing:
 
 ```bash
 CODEATLAS_DEBUG=symbol-search npm run mcp:functional-review
+```
+
+Run the lexical boundary comparison:
+
+```bash
+npm run mcp:lexical-boundary-eval
 ```
 
 Run the automated verification suite afterward:

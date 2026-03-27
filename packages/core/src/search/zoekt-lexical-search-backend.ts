@@ -3,14 +3,44 @@ import { mkdir, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { debugLog } from "../common/debug.js";
 import type { ZoektLexicalBackendConfig } from "../configuration/config.js";
 import { getRepoBuildDir, getRepoIndexDir } from "../indexer/repo-artifact-path.js";
 import type { RepositoryIndexStatus } from "../metadata/metadata-store.js";
 import type { RepositoryRecord } from "../registry/repository-registry.js";
 import type { BackendSearchHit, BackendSearchRequest, LexicalSearchBackend } from "./lexical-search-backend.js";
 
-const execFileAsync = promisify(execFile);
-const processTimeoutMs = 30_000;
+type ZoektExecOptions = {
+  windowsHide: boolean;
+  timeout: number;
+  maxBuffer?: number;
+};
+
+type ZoektExecResult = {
+  stdout: string;
+  stderr: string;
+};
+
+type ZoektExec = (
+  file: string,
+  args: string[],
+  options: ZoektExecOptions,
+) => Promise<ZoektExecResult>;
+
+interface ZoektRuntimeOptions {
+  execFile: ZoektExec;
+  availabilityTimeoutMs: number;
+  indexBuildTimeoutMs: number;
+  searchTimeoutMs: number;
+}
+
+const execFileAsync = promisify(execFile) as unknown as ZoektExec;
+const defaultZoektRuntime: ZoektRuntimeOptions = {
+  execFile: execFileAsync,
+  availabilityTimeoutMs: 5_000,
+  indexBuildTimeoutMs: 120_000,
+  searchTimeoutMs: 30_000,
+};
 const defaultResultScore = 100;
 const minimumResultScore = 1;
 
@@ -30,11 +60,18 @@ interface ZoektAvailability {
 export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
   readonly kind = "zoekt";
   private zoektAvailability?: ZoektAvailability;
+  private readonly runtime: ZoektRuntimeOptions;
 
   constructor(
     private readonly backendConfig: ZoektLexicalBackendConfig,
     private readonly bootstrapBackend?: LexicalSearchBackend,
+    runtime?: Partial<ZoektRuntimeOptions>,
   ) {
+    this.runtime = {
+      ...defaultZoektRuntime,
+      ...runtime,
+    };
+
     // Development environments can still route through the bootstrap backend
     // when Zoekt is configured but not yet available locally.
     if (backendConfig.allowBootstrapFallback && !bootstrapBackend) {
@@ -60,14 +97,21 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 
     try {
       const buildDir = getRepoBuildDir(this.backendConfig.indexRoot, repository.name, repository.rootPath);
+      debugLog("zoekt", "starting zoekt prepareRepository", {
+        repo: repository.name,
+        executable: this.backendConfig.zoektIndexExecutable,
+        buildDir,
+        rootPath: repository.rootPath,
+        timeoutMs: this.runtime.indexBuildTimeoutMs,
+      });
       await mkdir(buildDir, { recursive: true });
-      await execFileAsync(
+      await this.runtime.execFile(
         this.backendConfig.zoektIndexExecutable,
         ["-index", buildDir, repository.rootPath],
         {
           windowsHide: true,
           maxBuffer: 16 * 1024 * 1024,
-          timeout: processTimeoutMs,
+          timeout: this.runtime.indexBuildTimeoutMs,
         },
       );
 
@@ -79,6 +123,15 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
         detail: `Lexical index available via Zoekt at ${buildDir}`,
       };
     } catch (error) {
+      debugLog("zoekt", "zoekt prepareRepository failed", {
+        repo: repository.name,
+        message: error instanceof Error ? error.message : String(error),
+        code: (error as NodeJS.ErrnoException | undefined)?.code,
+        signal: (error as { signal?: string } | undefined)?.signal,
+        stderr: typeof (error as { stderr?: string } | undefined)?.stderr === "string"
+          ? (error as { stderr?: string }).stderr!.split(/\r?\n/).slice(-5)
+          : undefined,
+      });
       const detail = error instanceof Error ? error.message : String(error);
       return this.prepareWithFallback(repository, `Zoekt index build failed: ${detail}`);
     }
@@ -92,18 +145,34 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 
     try {
       const indexDir = getRepoIndexDir(this.backendConfig.indexRoot, repository.name, repository.rootPath);
-      const { stdout } = await execFileAsync(
+      debugLog("zoekt", "starting zoekt searchRepository", {
+        repo: repository.name,
+        executable: this.backendConfig.zoektSearchExecutable,
+        indexDir,
+        query: request.query,
+        timeoutMs: this.runtime.searchTimeoutMs,
+      });
+      const { stdout } = await this.runtime.execFile(
         this.backendConfig.zoektSearchExecutable,
         ["-index_dir", indexDir, request.query],
         {
           windowsHide: true,
           maxBuffer: 16 * 1024 * 1024,
-          timeout: processTimeoutMs,
+          timeout: this.runtime.searchTimeoutMs,
         },
       );
 
       return this.parseZoektOutput(stdout, request.limit);
     } catch (error) {
+      debugLog("zoekt", "zoekt searchRepository failed", {
+        repo: repository.name,
+        message: error instanceof Error ? error.message : String(error),
+        code: (error as NodeJS.ErrnoException | undefined)?.code,
+        signal: (error as { signal?: string } | undefined)?.signal,
+        stderr: typeof (error as { stderr?: string } | undefined)?.stderr === "string"
+          ? (error as { stderr?: string }).stderr!.split(/\r?\n/).slice(-5)
+          : undefined,
+      });
       const detail = error instanceof Error ? error.message : String(error);
       return this.searchWithFallback(repository, request, `Zoekt search failed: ${detail}`);
     }
@@ -264,8 +333,18 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
     }
 
     try {
-      await execFileAsync(this.backendConfig.zoektIndexExecutable, ["-help"], { timeout: processTimeoutMs, windowsHide: true });
-    } catch {
+      await this.runtime.execFile(this.backendConfig.zoektIndexExecutable, ["-help"], {
+        timeout: this.runtime.availabilityTimeoutMs,
+        windowsHide: true,
+      });
+    } catch (error) {
+      debugLog("zoekt", "zoekt availability check failed for index executable", {
+        executable: this.backendConfig.zoektIndexExecutable,
+        timeoutMs: this.runtime.availabilityTimeoutMs,
+        message: error instanceof Error ? error.message : String(error),
+        code: (error as NodeJS.ErrnoException | undefined)?.code,
+        signal: (error as { signal?: string } | undefined)?.signal,
+      });
       this.zoektAvailability = {
         available: false,
         detail: `Zoekt index executable not available: ${this.backendConfig.zoektIndexExecutable}`,
@@ -274,8 +353,18 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
     }
 
     try {
-      await execFileAsync(this.backendConfig.zoektSearchExecutable, ["-help"], { timeout: processTimeoutMs, windowsHide: true });
-    } catch {
+      await this.runtime.execFile(this.backendConfig.zoektSearchExecutable, ["-help"], {
+        timeout: this.runtime.availabilityTimeoutMs,
+        windowsHide: true,
+      });
+    } catch (error) {
+      debugLog("zoekt", "zoekt availability check failed for search executable", {
+        executable: this.backendConfig.zoektSearchExecutable,
+        timeoutMs: this.runtime.availabilityTimeoutMs,
+        message: error instanceof Error ? error.message : String(error),
+        code: (error as NodeJS.ErrnoException | undefined)?.code,
+        signal: (error as { signal?: string } | undefined)?.signal,
+      });
       this.zoektAvailability = {
         available: false,
         detail: `Zoekt search executable not available: ${this.backendConfig.zoektSearchExecutable}`,

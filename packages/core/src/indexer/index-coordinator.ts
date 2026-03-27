@@ -158,6 +158,7 @@ export class IndexCoordinator {
     const indexedAt = new Date().toISOString();
     let status: RepositoryIndexStatus = {
       ...lexicalStatus,
+      configuredBackend: this.lexicalBackend.kind,
       symbolState: "ready",
       symbolLastIndexedAt: indexedAt,
       symbolCount: 0,
