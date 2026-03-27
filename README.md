@@ -58,12 +58,20 @@ Implemented now:
 
 `find_symbol` is implemented, but its current TS and JS-specific backing index is still under evaluation. When `exact: true` is supplied, only case-insensitive exact symbol name matches are returned.
 
+`list_repos`, `register_repo`, `refresh_repo`, and `get_index_status` now return additive `index_status.diagnostics` data when the environment is degraded or misconfigured. The field is user-facing and includes `severity`, `summary`, likely causes, and suggested remedies without changing the existing MCP tool contracts.
+
 Reserved with stable contracts (placeholder implementations):
 
 - `semantic_search`
 - `hybrid_search`
 
 These tools return structured placeholder responses today. Their input and output shapes are already defined so future backends can be added without changing the MCP tool names or result schema.
+
+Important boundary:
+
+- MCP tools validate environment readiness and report remediation steps
+- external dependency installation stays outside MCP and remains a manual script or operator action
+- Zoekt setup is still handled through the repository scripts and example configs rather than a new MCP install tool
 
 ## Search Result Contract
 
@@ -195,6 +203,8 @@ The installer script:
 - prints a ready-to-use config snippet pointing CodeAtlas at the installed binaries
 - the default npm entry now enables `-FallbackToSourceBuild`, so the standard Windows install command prefers the more resilient path
 - supports `-UseSourceBuild` for an explicit source-build path and `-FallbackToSourceBuild` to retry with a patched source build if `go install` fails
+
+CodeAtlas MCP does not run these install flows for you. Instead, it reports environment diagnostics through `index_status` when Zoekt is unavailable and points operators back to these scripts and configs.
 
 The source-build path:
 
@@ -427,7 +437,9 @@ For a smooth local development loop in VS Code:
 
 Available development tasks:
 
-- set `CODEATLAS_DEBUG=symbol-search` to emit compact symbol search diagnostics to stderr during MCP execution
+- set `CODEATLAS_DEBUG=*` to emit verbose runtime diagnostics to stderr, or target scopes such as `runtime`, `mcp`, `indexer`, `zoekt`, `ripgrep`, `search-service`, `symbol-search`, `symbol-extractor`, `symbol-index`, `source-reader`, `registry`, and `metadata`
+- add the `trace` scope when you also want stderr/stdout tails from backend process failures, for example `CODEATLAS_DEBUG=zoekt,trace`
+- set `CODEATLAS_DEBUG=symbol-search` for focused symbol search diagnostics only
 - use `node "scripts/mcp-functional-review.mjs"` for a reusable real-MCP functional review against the current repository; it prefers Zoekt when Zoekt binaries are available in the active runtime
 - use `node "scripts/mcp-lexical-boundary-eval.mjs"` to compare ripgrep-backed search behavior with naive fallback around skipped directories, hidden files, binary files, and max file size limits
 - see `docs/mcp-functional-review.md` for the repeatable functional review workflow

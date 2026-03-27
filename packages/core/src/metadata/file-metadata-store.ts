@@ -1,3 +1,4 @@
+import { debugLog, toErrorDetails } from "../common/debug.js";
 import { readJsonFile, writeJsonFile } from "../common/json-file.js";
 import {
   type MetadataStore,
@@ -13,12 +14,23 @@ export class FileMetadataStore implements MetadataStore {
 
   async listIndexStatuses(): Promise<RepositoryIndexStatus[]> {
     const document = await this.readDocument();
-    return [...document.statuses].sort((left, right) => left.repo.localeCompare(right.repo));
+    const statuses = [...document.statuses].sort((left, right) => left.repo.localeCompare(right.repo));
+    debugLog("metadata", "listed index statuses", {
+      metadataPath: this.metadataPath,
+      statusCount: statuses.length,
+    });
+    return statuses;
   }
 
   async getIndexStatus(repo: string): Promise<RepositoryIndexStatus | null> {
     const document = await this.readDocument();
-    return document.statuses.find((status) => status.repo === repo) ?? null;
+    const status = document.statuses.find((candidate) => candidate.repo === repo) ?? null;
+    debugLog("metadata", "read index status", {
+      metadataPath: this.metadataPath,
+      repo,
+      found: Boolean(status),
+    });
+    return status;
   }
 
   async setIndexStatus(status: RepositoryIndexStatus): Promise<void> {
@@ -32,9 +44,30 @@ export class FileMetadataStore implements MetadataStore {
     }
 
     await writeJsonFile(this.metadataPath, document);
+    debugLog("metadata", "stored index status", {
+      metadataPath: this.metadataPath,
+      repo: status.repo,
+      backend: status.backend,
+      configuredBackend: status.configuredBackend,
+      state: status.state,
+      symbolState: status.symbolState,
+    });
   }
 
   private async readDocument(): Promise<MetadataDocument> {
-    return readJsonFile<MetadataDocument>(this.metadataPath, { statuses: [] });
+    try {
+      const document = await readJsonFile<MetadataDocument>(this.metadataPath, { statuses: [] });
+      debugLog("metadata", "loaded metadata document", {
+        metadataPath: this.metadataPath,
+        statusCount: document.statuses.length,
+      });
+      return document;
+    } catch (error) {
+      debugLog("metadata", "failed to read metadata document", {
+        metadataPath: this.metadataPath,
+        ...toErrorDetails(error),
+      });
+      throw error;
+    }
   }
 }

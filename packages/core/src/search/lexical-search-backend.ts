@@ -1,4 +1,4 @@
-import type { RepositoryIndexStatus } from "../metadata/metadata-store.js";
+import type { IndexStatusReason, RepositoryIndexStatus } from "../metadata/metadata-store.js";
 import type { RepositoryRecord } from "../registry/repository-registry.js";
 
 export interface BackendSearchRequest {
@@ -17,6 +17,7 @@ export interface BackendSearchHit {
 export interface BackendRepositoryReadiness {
   ready: boolean;
   state?: "stale" | "error";
+  reason?: IndexStatusReason;
   detail?: string;
 }
 

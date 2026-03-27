@@ -128,6 +128,12 @@ Responsibilities:
 - distinguish `not_indexed`, `indexing`, `ready`, `stale`, and `error` states
 - track backend-specific metadata without leaking it into MCP contracts
 
+Current user-facing behavior:
+
+- MCP responses may attach additive `index_status.diagnostics` guidance derived from local metadata and backend configuration
+- the guidance is explanatory only, is derived at response time, and is not part of the persisted metadata document
+- it does not change the stable request or response contract for existing tools
+
 Storage:
 
 - local JSON today
@@ -198,6 +204,7 @@ Backend selection rules:
 - runtime chooses Zoekt when the configured Zoekt executables and index paths are available
 - runtime falls back to the bootstrap backend only when configuration explicitly allows development fallback behavior
 - the ripgrep-backed path now applies the same skip rules in both ripgrep and naive fallback modes for `.git`, `node_modules`, `dist`, `data`, and `.next`, while still allowing hidden top-level files and respecting `maxBytesPerFile`
+- when the configured backend is unavailable, MCP-facing status responses now attach explicit remediation guidance instead of leaving operators with raw executable errors alone
 
 Refresh flow:
 
@@ -299,6 +306,12 @@ Exposes stable tool contracts:
 - `refresh_repo`
 
 The `semantic_search` and `hybrid_search` tools exist as stable contract surfaces with placeholder implementations. Future retrieval upgrades will not require contract renames or transport changes.
+
+Environment boundary:
+
+- MCP validates whether the configured local runtime is usable
+- MCP reports human-friendly remediation steps when Zoekt or ripgrep are unavailable
+- dependency installation remains outside MCP and continues to use repository scripts or manual operator action
 
 ### VS Code Extension
 
@@ -402,6 +415,7 @@ Execution notes:
 Operational note:
 
 - real MCP functional review should use the stdio-based workflow captured in `docs/mcp-functional-review.md` rather than handler-only testing when validating end-to-end behavior
+- debug tracing is intentionally available across runtime, handler, indexing, backend, symbol, registry, metadata, and source-reader layers through `CODEATLAS_DEBUG`
 
 ### Phase 3: chunk-based indexing and local embeddings (deferred)
 

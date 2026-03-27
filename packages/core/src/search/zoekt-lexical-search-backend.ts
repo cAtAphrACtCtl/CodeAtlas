@@ -3,7 +3,7 @@ import { mkdir, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { debugLog } from "../common/debug.js";
+import { debugLog, toErrorDetails } from "../common/debug.js";
 import type { ZoektLexicalBackendConfig } from "../configuration/config.js";
 import { getRepoBuildDir, getRepoIndexDir } from "../indexer/repo-artifact-path.js";
 import type { RepositoryIndexStatus } from "../metadata/metadata-store.js";
@@ -54,6 +54,7 @@ function scoreZoektHit(resultIndex: number): number {
 
 interface ZoektAvailability {
   available: boolean;
+  reason?: "zoekt_unavailable";
   detail: string;
 }
 
@@ -86,13 +87,18 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
         repo: repository.name,
         backend: this.kind,
         state: "error",
+        reason: "repository_root_not_directory",
         detail: "Repository root is not a directory",
       };
     }
 
     const availability = await this.getZoektAvailability();
     if (!availability.available) {
-      return this.prepareWithFallback(repository, availability.detail);
+      debugLog("zoekt", "prepareRepository using fallback because Zoekt is unavailable", {
+        repo: repository.name,
+        detail: availability.detail,
+      });
+      return this.prepareWithFallback(repository, availability.detail, availability.reason ?? "zoekt_unavailable");
     }
 
     try {
@@ -115,31 +121,39 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
         },
       );
 
-      return {
+      const status: RepositoryIndexStatus = {
         repo: repository.name,
         backend: this.kind,
         state: "ready",
         lastIndexedAt: new Date().toISOString(),
         detail: `Lexical index available via Zoekt at ${buildDir}`,
       };
+
+      debugLog("zoekt", "completed zoekt prepareRepository", {
+        repo: repository.name,
+        buildDir,
+        state: status.state,
+      });
+
+      return status;
     } catch (error) {
       debugLog("zoekt", "zoekt prepareRepository failed", {
         repo: repository.name,
-        message: error instanceof Error ? error.message : String(error),
-        code: (error as NodeJS.ErrnoException | undefined)?.code,
-        signal: (error as { signal?: string } | undefined)?.signal,
-        stderr: typeof (error as { stderr?: string } | undefined)?.stderr === "string"
-          ? (error as { stderr?: string }).stderr!.split(/\r?\n/).slice(-5)
-          : undefined,
+        ...toErrorDetails(error),
       });
       const detail = error instanceof Error ? error.message : String(error);
-      return this.prepareWithFallback(repository, `Zoekt index build failed: ${detail}`);
+      return this.prepareWithFallback(repository, `Zoekt index build failed: ${detail}`, "zoekt_index_build_failed");
     }
   }
 
   async searchRepository(repository: RepositoryRecord, request: BackendSearchRequest): Promise<BackendSearchHit[]> {
     const availability = await this.getZoektAvailability();
     if (!availability.available) {
+      debugLog("zoekt", "searchRepository using fallback because Zoekt is unavailable", {
+        repo: repository.name,
+        query: request.query,
+        detail: availability.detail,
+      });
       return this.searchWithFallback(repository, request, availability.detail);
     }
 
@@ -162,16 +176,17 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
         },
       );
 
-      return this.parseZoektOutput(stdout, request.limit);
+      const hits = this.parseZoektOutput(stdout, request.limit);
+      debugLog("zoekt", "completed zoekt searchRepository", {
+        repo: repository.name,
+        query: request.query,
+        hitCount: hits.length,
+      });
+      return hits;
     } catch (error) {
       debugLog("zoekt", "zoekt searchRepository failed", {
         repo: repository.name,
-        message: error instanceof Error ? error.message : String(error),
-        code: (error as NodeJS.ErrnoException | undefined)?.code,
-        signal: (error as { signal?: string } | undefined)?.signal,
-        stderr: typeof (error as { stderr?: string } | undefined)?.stderr === "string"
-          ? (error as { stderr?: string }).stderr!.split(/\r?\n/).slice(-5)
-          : undefined,
+        ...toErrorDetails(error),
       });
       const detail = error instanceof Error ? error.message : String(error);
       return this.searchWithFallback(repository, request, `Zoekt search failed: ${detail}`);
@@ -181,12 +196,18 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
   async verifyRepositoryReady(
     repository: RepositoryRecord,
     existingStatus?: RepositoryIndexStatus,
-  ): Promise<{ ready: boolean; state?: "stale" | "error"; detail?: string }> {
+  ): Promise<{ ready: boolean; state?: "stale" | "error"; reason?: RepositoryIndexStatus["reason"]; detail?: string }> {
+    debugLog("zoekt", "verifying zoekt repository readiness", {
+      repo: repository.name,
+      existingBackend: existingStatus?.backend,
+      existingConfiguredBackend: existingStatus?.configuredBackend,
+    });
     const configuredBackend = existingStatus?.configuredBackend ?? existingStatus?.backend;
     if (configuredBackend && configuredBackend !== this.kind) {
       return {
         ready: false,
         state: "stale",
+        reason: "configured_backend_mismatch",
         detail: `Stored lexical status was prepared for backend ${configuredBackend}, but active backend is ${this.kind}`,
       };
     }
@@ -199,15 +220,21 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
       return {
         ready: false,
         state: "stale",
+        reason: "fallback_backend_unverified",
         detail: `Stored lexical status uses fallback backend ${existingStatus.backend}, but no active readiness verifier is available for it`,
       };
     }
 
     const availability = await this.getZoektAvailability();
     if (!availability.available) {
+      debugLog("zoekt", "repository readiness failed because Zoekt is unavailable", {
+        repo: repository.name,
+        detail: availability.detail,
+      });
       return {
         ready: false,
         state: "stale",
+        reason: availability.reason ?? "zoekt_unavailable",
         detail: availability.detail,
       };
     }
@@ -220,6 +247,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
         return {
           ready: false,
           state: "stale",
+          reason: "zoekt_index_not_directory",
           detail: `Zoekt index path is not a directory for repository ${repository.name}: ${indexDir}`,
         };
       }
@@ -231,17 +259,28 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
         return {
           ready: false,
           state: "stale",
+          reason: "zoekt_index_no_shards",
           detail: `Zoekt index directory has no shard files for repository ${repository.name}: ${indexDir}`,
         };
       }
 
+      debugLog("zoekt", "repository readiness verified", {
+        repo: repository.name,
+        indexDir,
+      });
       return { ready: true };
     } catch (error) {
+      debugLog("zoekt", "repository readiness inspection failed", {
+        repo: repository.name,
+        indexDir,
+        ...toErrorDetails(error),
+      });
       const detail = error instanceof Error ? error.message : String(error);
       if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
         return {
           ready: false,
           state: "stale",
+          reason: "zoekt_index_missing",
           detail: `Zoekt index directory is missing for repository ${repository.name}: ${indexDir}`,
         };
       }
@@ -249,6 +288,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
       return {
         ready: false,
         state: "error",
+        reason: "zoekt_index_inspection_failed",
         detail: `Unable to inspect Zoekt index directory for repository ${repository.name}: ${detail}`,
       };
     }
@@ -260,6 +300,10 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
     noFallbackAction: () => T | Promise<T>,
   ): Promise<T> {
     if (this.backendConfig.allowBootstrapFallback && this.bootstrapBackend) {
+      debugLog("zoekt", "executing bootstrap fallback", {
+        detail,
+        fallbackBackend: this.bootstrapBackend.kind,
+      });
       return fallbackAction();
     }
 
@@ -280,13 +324,18 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
     );
   }
 
-  private async prepareWithFallback(repository: RepositoryRecord, detail: string): Promise<RepositoryIndexStatus> {
+  private async prepareWithFallback(
+    repository: RepositoryRecord,
+    detail: string,
+    reason: RepositoryIndexStatus["reason"],
+  ): Promise<RepositoryIndexStatus> {
     return this.withBootstrapFallback(
       detail,
       async () => {
         const fallbackStatus = await this.bootstrapBackend!.prepareRepository(repository);
         return {
           ...fallbackStatus,
+          reason,
           detail: fallbackStatus.detail
             ? `${detail}; using bootstrap fallback: ${fallbackStatus.detail}`
             : `${detail}; using bootstrap fallback backend`,
@@ -296,6 +345,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
         repo: repository.name,
         backend: this.kind,
         state: "error",
+        reason,
         detail,
       }),
     );
@@ -324,6 +374,12 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
       }
     }
 
+    debugLog("zoekt", "parsed zoekt output", {
+      lineCount: lines.length,
+      hitCount: hits.length,
+      limit,
+    });
+
     return hits;
   }
 
@@ -337,16 +393,19 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
         timeout: this.runtime.availabilityTimeoutMs,
         windowsHide: true,
       });
+      debugLog("zoekt", "zoekt index executable available", {
+        executable: this.backendConfig.zoektIndexExecutable,
+        timeoutMs: this.runtime.availabilityTimeoutMs,
+      });
     } catch (error) {
       debugLog("zoekt", "zoekt availability check failed for index executable", {
         executable: this.backendConfig.zoektIndexExecutable,
         timeoutMs: this.runtime.availabilityTimeoutMs,
-        message: error instanceof Error ? error.message : String(error),
-        code: (error as NodeJS.ErrnoException | undefined)?.code,
-        signal: (error as { signal?: string } | undefined)?.signal,
+        ...toErrorDetails(error),
       });
       this.zoektAvailability = {
         available: false,
+        reason: "zoekt_unavailable",
         detail: `Zoekt index executable not available: ${this.backendConfig.zoektIndexExecutable}`,
       };
       return this.zoektAvailability;
@@ -357,16 +416,19 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
         timeout: this.runtime.availabilityTimeoutMs,
         windowsHide: true,
       });
+      debugLog("zoekt", "zoekt search executable available", {
+        executable: this.backendConfig.zoektSearchExecutable,
+        timeoutMs: this.runtime.availabilityTimeoutMs,
+      });
     } catch (error) {
       debugLog("zoekt", "zoekt availability check failed for search executable", {
         executable: this.backendConfig.zoektSearchExecutable,
         timeoutMs: this.runtime.availabilityTimeoutMs,
-        message: error instanceof Error ? error.message : String(error),
-        code: (error as NodeJS.ErrnoException | undefined)?.code,
-        signal: (error as { signal?: string } | undefined)?.signal,
+        ...toErrorDetails(error),
       });
       this.zoektAvailability = {
         available: false,
+        reason: "zoekt_unavailable",
         detail: `Zoekt search executable not available: ${this.backendConfig.zoektSearchExecutable}`,
       };
       return this.zoektAvailability;
@@ -376,6 +438,10 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
       available: true,
       detail: "Zoekt executables available",
     };
+    debugLog("zoekt", "Zoekt executables verified", {
+      indexExecutable: this.backendConfig.zoektIndexExecutable,
+      searchExecutable: this.backendConfig.zoektSearchExecutable,
+    });
     return this.zoektAvailability;
   }
 }

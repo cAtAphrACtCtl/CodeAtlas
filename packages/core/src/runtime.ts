@@ -1,3 +1,4 @@
+import { debugLog } from "./common/debug.js";
 import { ConfigurationService } from "./configuration/configuration-service.js";
 import { loadConfig, type CodeAtlasConfig } from "./configuration/config.js";
 import { RepositoryDiscoveryService } from "./discovery/repository-discovery.js";
@@ -37,6 +38,14 @@ export async function createCodeAtlasServices(
 ): Promise<CodeAtlasServices> {
   const baseDir = options.baseDir ?? process.cwd();
   const config = await loadConfig(options.configFilePath, baseDir);
+  debugLog("runtime", "loaded configuration", {
+    baseDir,
+    configFilePath: options.configFilePath ?? process.env.CODEATLAS_CONFIG,
+    lexicalBackend: config.lexicalBackend.kind,
+    registryPath: config.registryPath,
+    metadataPath: config.metadataPath,
+    indexRoot: config.indexRoot,
+  });
   const configurationService = new ConfigurationService(baseDir);
   const discoveryService = new RepositoryDiscoveryService();
   const registry = new FileRepositoryRegistry(config.registryPath);
@@ -48,6 +57,12 @@ export async function createCodeAtlasServices(
   const indexCoordinator = new IndexCoordinator(registry, metadataStore, lexicalBackend, symbolExtractor, symbolIndexStore);
   const sourceReader = new FileSystemSourceReader();
   const searchService = new SearchService(registry, indexCoordinator, lexicalBackend, symbolSearchBackend, config.search);
+
+  debugLog("runtime", "initialized runtime services", {
+    lexicalBackend: lexicalBackend.kind,
+    symbolIndexRoot: config.indexRoot,
+    maxBytesPerFile: config.search.maxBytesPerFile,
+  });
 
   return {
     config,

@@ -65,6 +65,8 @@ Delivered so far:
 - unified `indexRoot` config derivation so Zoekt index root is derived automatically from the top-level `indexRoot`
 - migration script for moving from the old shared flat Zoekt index layout to per-repository directories
 - aligned ripgrep and naive fallback lexical boundary behavior for skipped directories and `maxBytesPerFile` handling
+- additive MCP-facing index diagnostics for degraded or misconfigured environments, with human-readable remediation guidance
+- broader debug tracing across runtime, MCP handlers, indexing, backend selection, symbol extraction, registry, metadata, and source reads via `CODEATLAS_DEBUG`
 
 Remaining work:
 

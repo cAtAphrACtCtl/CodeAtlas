@@ -1,4 +1,5 @@
 import { CodeAtlasError } from "../common/errors.js";
+import { debugLog, toErrorDetails } from "../common/debug.js";
 import type { MetadataStore, RepositoryIndexStatus } from "../metadata/metadata-store.js";
 import type { RepositoryRegistry } from "../registry/repository-registry.js";
 import type { LexicalSearchBackend } from "../search/lexical-search-backend.js";
@@ -21,6 +22,9 @@ export class IndexCoordinator {
   }
 
   async ensureLexicalReady(repoName: string): Promise<RepositoryIndexStatus> {
+    debugLog("indexer", "ensuring lexical readiness", {
+      repo: repoName,
+    });
     const existing = await this.metadataStore.getIndexStatus(repoName);
     if (existing?.state === "ready") {
       const verified = await this.validateStoredLexicalReadyStatus(repoName, existing);
@@ -31,6 +35,9 @@ export class IndexCoordinator {
 
     const inFlight = this.inFlightRefreshes.get(repoName);
     if (inFlight) {
+      debugLog("indexer", "reusing in-flight lexical refresh", {
+        repo: repoName,
+      });
       return inFlight;
     }
 
@@ -38,6 +45,9 @@ export class IndexCoordinator {
   }
 
   async ensureSymbolReady(repoName: string): Promise<RepositoryIndexStatus> {
+    debugLog("indexer", "ensuring symbol readiness", {
+      repo: repoName,
+    });
     const existing = await this.metadataStore.getIndexStatus(repoName);
     if (existing?.state === "ready" && existing.symbolState === "ready") {
       const verified = await this.validateStoredLexicalReadyStatus(repoName, existing);
@@ -48,6 +58,9 @@ export class IndexCoordinator {
 
     const inFlight = this.inFlightRefreshes.get(repoName);
     if (inFlight) {
+      debugLog("indexer", "reusing in-flight symbol refresh", {
+        repo: repoName,
+      });
       return inFlight;
     }
 
@@ -55,8 +68,14 @@ export class IndexCoordinator {
   }
 
   async refreshRepository(repoName: string): Promise<RepositoryIndexStatus> {
+    debugLog("indexer", "requesting repository refresh", {
+      repo: repoName,
+    });
     const existingRefresh = this.inFlightRefreshes.get(repoName);
     if (existingRefresh) {
+      debugLog("indexer", "returning existing in-flight refresh", {
+        repo: repoName,
+      });
       return existingRefresh;
     }
 
@@ -73,6 +92,10 @@ export class IndexCoordinator {
   }
 
   async markRepositoryStale(repoName: string, detail = "Repository contents changed and require refresh"): Promise<RepositoryIndexStatus> {
+    debugLog("indexer", "marking repository stale", {
+      repo: repoName,
+      detail,
+    });
     const repository = await this.registry.getRepository(repoName);
     if (!repository) {
       throw new CodeAtlasError(`Unknown repository: ${repoName}`);
@@ -84,6 +107,7 @@ export class IndexCoordinator {
       backend: existing?.backend ?? this.lexicalBackend.kind,
       configuredBackend: existing?.configuredBackend ?? this.lexicalBackend.kind,
       state: "stale",
+      reason: "repository_stale",
       lastIndexedAt: existing?.lastIndexedAt,
       symbolState:
         existing?.symbolState === "not_indexed" || existing?.symbolState === undefined ? existing?.symbolState : "stale",
@@ -93,6 +117,13 @@ export class IndexCoordinator {
     };
 
     await this.metadataStore.setIndexStatus(status);
+    debugLog("indexer", "stored stale repository status", {
+      repo: repoName,
+      backend: status.backend,
+      configuredBackend: status.configuredBackend,
+      state: status.state,
+      symbolState: status.symbolState,
+    });
     return status;
   }
 
@@ -109,26 +140,50 @@ export class IndexCoordinator {
       return existing;
     }
 
-    let readiness;
+    let readiness: {
+      ready: boolean;
+      state?: "stale" | "error";
+      reason?: RepositoryIndexStatus["reason"];
+      detail?: string;
+    };
     try {
       readiness = await this.lexicalBackend.verifyRepositoryReady(repository, existing);
     } catch (error) {
+      debugLog("indexer", "lexical readiness verification threw", {
+        repo: repoName,
+        ...toErrorDetails(error),
+      });
       readiness = {
         ready: false,
         state: "error" as const,
+        reason: "lexical_readiness_verification_failed",
         detail: `Lexical readiness verification failed: ${String(error)}`,
       };
     }
 
     if (readiness.ready) {
+      debugLog("indexer", "stored lexical status verified ready", {
+        repo: repoName,
+        backend: existing.backend,
+        configuredBackend: existing.configuredBackend,
+      });
       return existing;
     }
+
+    debugLog("indexer", "stored lexical status is no longer ready", {
+      repo: repoName,
+      backend: existing.backend,
+      configuredBackend: existing.configuredBackend,
+      nextState: readiness.state ?? "stale",
+      detail: readiness.detail,
+    });
 
     await this.metadataStore.setIndexStatus({
       ...existing,
       backend: existing.backend || this.lexicalBackend.kind,
       configuredBackend: existing.configuredBackend ?? this.lexicalBackend.kind,
       state: readiness.state ?? "stale",
+      reason: readiness.reason,
       detail: readiness.detail ?? existing.detail,
     });
 
@@ -136,6 +191,9 @@ export class IndexCoordinator {
   }
 
   private async refreshRepositoryInternal(repoName: string): Promise<RepositoryIndexStatus> {
+    debugLog("indexer", "starting refreshRepositoryInternal", {
+      repo: repoName,
+    });
     const repository = await this.registry.getRepository(repoName);
     if (!repository) {
       throw new CodeAtlasError(`Unknown repository: ${repoName}`);
@@ -147,6 +205,7 @@ export class IndexCoordinator {
       backend: existing?.backend ?? this.lexicalBackend.kind,
       configuredBackend: this.lexicalBackend.kind,
       state: "indexing",
+      reason: "refresh_in_progress",
       lastIndexedAt: existing?.lastIndexedAt,
       symbolState: "indexing",
       symbolLastIndexedAt: existing?.symbolLastIndexedAt,
@@ -154,7 +213,18 @@ export class IndexCoordinator {
       detail: "Repository refresh in progress",
     });
 
+    debugLog("indexer", "stored indexing status", {
+      repo: repository.name,
+      configuredBackend: this.lexicalBackend.kind,
+    });
+
     const lexicalStatus = await this.lexicalBackend.prepareRepository(repository);
+    debugLog("indexer", "lexical refresh completed", {
+      repo: repository.name,
+      backend: lexicalStatus.backend,
+      state: lexicalStatus.state,
+      detail: lexicalStatus.detail,
+    });
     const indexedAt = new Date().toISOString();
     let status: RepositoryIndexStatus = {
       ...lexicalStatus,
@@ -173,10 +243,19 @@ export class IndexCoordinator {
         symbolLastIndexedAt: indexedAt,
         symbolCount: symbols.length,
       };
+      debugLog("indexer", "symbol extraction completed", {
+        repo: repository.name,
+        symbolCount: symbols.length,
+      });
     } catch (error) {
+      debugLog("indexer", "symbol extraction failed", {
+        repo: repository.name,
+        ...toErrorDetails(error),
+      });
       status = {
         ...status,
         symbolState: "error",
+        reason: lexicalStatus.reason ?? "symbol_index_failed",
         symbolLastIndexedAt: indexedAt,
         detail: lexicalStatus.detail
           ? `${lexicalStatus.detail}; symbol indexing failed: ${String(error)}`
@@ -185,10 +264,21 @@ export class IndexCoordinator {
     }
 
     await this.metadataStore.setIndexStatus(status);
+    debugLog("indexer", "stored final repository status", {
+      repo: repository.name,
+      backend: status.backend,
+      configuredBackend: status.configuredBackend,
+      state: status.state,
+      symbolState: status.symbolState,
+      detail: status.detail,
+    });
     return status;
   }
 
   async getStatus(repoName?: string): Promise<RepositoryIndexStatus[]> {
+    debugLog("indexer", "reading index status", {
+      repo: repoName,
+    });
     if (repoName) {
       const existing = await this.metadataStore.getIndexStatus(repoName);
       if (existing) {

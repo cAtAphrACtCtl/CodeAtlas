@@ -1,3 +1,4 @@
+import { debugLog } from "../common/debug.js";
 import type { CodeAtlasConfig } from "../configuration/config.js";
 import { CodeAtlasError } from "../common/errors.js";
 import type {
@@ -22,6 +23,11 @@ export class SearchService {
   ) {}
 
   async searchLexical(request: SearchRequest): Promise<SearchResponse> {
+    debugLog("search-service", "starting lexical search", {
+      query: request.query,
+      repos: request.repos,
+      limit: request.limit,
+    });
     const repositories = await this.resolveRepositories(request.repos);
     const limit = this.resolveLimit(request.limit);
 
@@ -47,14 +53,28 @@ export class SearchService {
       .sort((left, right) => right.score - left.score)
       .slice(0, limit);
 
-    return {
+    const response: SearchResponse = {
       query: request.query,
       source_type: "lexical",
       results,
     };
+
+    debugLog("search-service", "completed lexical search", {
+      query: request.query,
+      repoCount: repositories.length,
+      resultCount: response.results.length,
+      limit,
+    });
+
+    return response;
   }
 
   async searchSemantic(request: SearchRequest): Promise<SearchResponse> {
+    debugLog("search-service", "semantic search requested", {
+      query: request.query,
+      repos: request.repos,
+      limit: request.limit,
+    });
     return {
       query: request.query,
       source_type: "semantic",
@@ -65,6 +85,11 @@ export class SearchService {
   }
 
   async searchHybrid(request: SearchRequest): Promise<SearchResponse> {
+    debugLog("search-service", "hybrid search requested", {
+      query: request.query,
+      repos: request.repos,
+      limit: request.limit,
+    });
     return {
       query: request.query,
       source_type: "hybrid",
@@ -75,6 +100,13 @@ export class SearchService {
   }
 
   async findSymbols(request: SymbolSearchRequest): Promise<SymbolSearchResponse> {
+    debugLog("search-service", "starting symbol search", {
+      query: request.query,
+      repos: request.repos,
+      kinds: request.kinds,
+      limit: request.limit,
+      exact: request.exact,
+    });
     const repositories = await this.resolveRepositories(request.repos);
     const limit = this.resolveLimit(request.limit);
 
@@ -89,28 +121,51 @@ export class SearchService {
       ),
     );
 
-    return {
+    const response: SymbolSearchResponse = {
       query: request.query,
       results: results
         .flat()
         .sort((left, right) => scoreSymbol(right, request.query, request.exact ?? false) - scoreSymbol(left, request.query, request.exact ?? false))
         .slice(0, limit),
     };
+
+    debugLog("search-service", "completed symbol search", {
+      query: request.query,
+      repoCount: repositories.length,
+      resultCount: response.results.length,
+      limit,
+      exact: request.exact ?? false,
+    });
+
+    return response;
   }
 
   private async resolveRepositories(repoNames?: string[]): Promise<RepositoryRecord[]> {
     if (!repoNames || repoNames.length === 0) {
-      return this.registry.listRepositories();
+      const repositories = await this.registry.listRepositories();
+      debugLog("search-service", "resolved repositories from full registry", {
+        repositoryCount: repositories.length,
+      });
+      return repositories;
     }
 
     const repositories = await Promise.all(repoNames.map((repoName) => this.registry.getRepository(repoName)));
     const missingRepositories = repoNames.filter((_, index) => !repositories[index]);
 
     if (missingRepositories.length > 0) {
+      debugLog("search-service", "failed to resolve repositories", {
+        requestedRepositories: repoNames,
+        missingRepositories,
+      });
       throw new CodeAtlasError(`Unknown repositories: ${missingRepositories.join(", ")}`);
     }
 
-    return repositories as RepositoryRecord[];
+    const resolved = repositories as RepositoryRecord[];
+    debugLog("search-service", "resolved requested repositories", {
+      requestedRepositories: repoNames,
+      repositoryCount: resolved.length,
+    });
+    return resolved;
   }
 
   private resolveLimit(limit?: number): number {

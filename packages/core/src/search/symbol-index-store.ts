@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
+import { debugLog, toErrorDetails } from "../common/debug.js";
 import { readJsonFile, writeJsonFile } from "../common/json-file.js";
 import type { SymbolRecord } from "../contracts/search.js";
 
@@ -38,19 +39,42 @@ export class FileSymbolIndexStore implements SymbolIndexStore {
   constructor(private readonly indexRoot: string) {}
 
   async getSymbols(repo: string): Promise<SymbolRecord[]> {
-    const document = await readJsonFile<SymbolIndexDocument>(this.getIndexPath(repo), {
-      repo,
-      symbols: [],
-    });
+    const indexPath = this.getIndexPath(repo);
 
-    return Array.isArray(document.symbols) ? document.symbols.filter(isSymbolRecord) : [];
+    try {
+      const document = await readJsonFile<SymbolIndexDocument>(indexPath, {
+        repo,
+        symbols: [],
+      });
+
+      const symbols = Array.isArray(document.symbols) ? document.symbols.filter(isSymbolRecord) : [];
+      debugLog("symbol-index", "loaded symbols", {
+        repo,
+        indexPath,
+        symbolCount: symbols.length,
+      });
+      return symbols;
+    } catch (error) {
+      debugLog("symbol-index", "failed to load symbols", {
+        repo,
+        indexPath,
+        ...toErrorDetails(error),
+      });
+      throw error;
+    }
   }
 
   async setSymbols(repo: string, symbols: SymbolRecord[]): Promise<void> {
-    await mkdir(path.dirname(this.getIndexPath(repo)), { recursive: true });
-    await writeJsonFile(this.getIndexPath(repo), {
+    const indexPath = this.getIndexPath(repo);
+    await mkdir(path.dirname(indexPath), { recursive: true });
+    await writeJsonFile(indexPath, {
       repo,
       symbols,
+    });
+    debugLog("symbol-index", "stored symbols", {
+      repo,
+      indexPath,
+      symbolCount: symbols.length,
     });
   }
 

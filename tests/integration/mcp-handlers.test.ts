@@ -15,6 +15,28 @@ import { FileSymbolIndexStore } from "../../packages/core/src/search/symbol-inde
 import { SymbolSearchBackend } from "../../packages/core/src/search/symbol-search-backend.js";
 import { TypeScriptSymbolExtractor } from "../../packages/core/src/search/symbol-extractor.js";
 
+function createTestConfig(tempRoot: string, registryPath: string, metadataPath: string) {
+  return {
+    registryPath,
+    metadataPath,
+    indexRoot: path.join(tempRoot, "indexes"),
+    lexicalBackend: {
+      kind: "ripgrep" as const,
+      executable: "rg",
+      fallbackToNaiveScan: true,
+    },
+    search: {
+      defaultLimit: 20,
+      maxLimit: 100,
+      maxBytesPerFile: 256 * 1024,
+    },
+    mcp: {
+      serverName: "codeatlas",
+      serverVersion: "0.1.0",
+    },
+  };
+}
+
 test("MCP handlers expose phase 1 lexical search and source reading", async (t) => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-"));
   t.after(async () => {
@@ -66,6 +88,7 @@ test("MCP handlers expose phase 1 lexical search and source reading", async (t) 
   });
 
   const handlers = createHandlers({
+    config: createTestConfig(tempRoot, registryPath, metadataPath),
     registry,
     metadataStore,
     indexCoordinator,
@@ -160,6 +183,7 @@ test("MCP handlers reject read_source requests when start_line exceeds file leng
   });
 
   const handlers = createHandlers({
+    config: createTestConfig(tempRoot, registryPath, metadataPath),
     registry,
     metadataStore,
     indexCoordinator,
@@ -177,4 +201,164 @@ test("MCP handlers reject read_source requests when start_line exceeds file leng
       }),
     /start_line exceeds file length/,
   );
+});
+
+test("MCP handlers attach friendly diagnostics when configured Zoekt is unavailable", async () => {
+  const handlers = createHandlers({
+    config: {
+      registryPath: "C:/tmp/registry.json",
+      metadataPath: "C:/tmp/metadata.json",
+      indexRoot: "C:/tmp/indexes",
+      lexicalBackend: {
+        kind: "zoekt",
+        zoektIndexExecutable: "C:/missing/zoekt-index.exe",
+        zoektSearchExecutable: "C:/missing/zoekt.exe",
+        indexRoot: "C:/tmp/indexes/zoekt",
+        allowBootstrapFallback: true,
+        bootstrapFallback: {
+          kind: "ripgrep",
+          executable: "rg",
+          fallbackToNaiveScan: true,
+        },
+      },
+      search: {
+        defaultLimit: 20,
+        maxLimit: 100,
+        maxBytesPerFile: 256 * 1024,
+      },
+      mcp: {
+        serverName: "codeatlas",
+        serverVersion: "0.1.0",
+      },
+    },
+    registry: {
+      async listRepositories() {
+        return [
+          {
+            name: "sample",
+            rootPath: "C:/tmp/sample",
+            registeredAt: "2026-03-27T00:00:00.000Z",
+          },
+        ];
+      },
+      async getRepository() {
+        return {
+          name: "sample",
+          rootPath: "C:/tmp/sample",
+          registeredAt: "2026-03-27T00:00:00.000Z",
+        };
+      },
+      async registerRepository() {
+        throw new Error("not used");
+      },
+    },
+    metadataStore: {
+      async listIndexStatuses() {
+        return [];
+      },
+      async getIndexStatus() {
+        return null;
+      },
+      async setIndexStatus() {},
+    },
+    indexCoordinator: {
+      async ensureReady() {
+        throw new Error("not used");
+      },
+      async ensureLexicalReady() {
+        throw new Error("not used");
+      },
+      async ensureSymbolReady() {
+        throw new Error("not used");
+      },
+      async refreshRepository() {
+        return {
+          repo: "sample",
+          backend: "ripgrep",
+          configuredBackend: "zoekt",
+          state: "ready" as const,
+          reason: "zoekt_unavailable" as const,
+          symbolState: "ready" as const,
+          detail: "Zoekt index executable not available: C:/missing/zoekt-index.exe; using bootstrap fallback: fallback ready",
+        };
+      },
+      async markRepositoryStale() {
+        throw new Error("not used");
+      },
+      async getStatus() {
+        return [
+          {
+            repo: "sample",
+            backend: "ripgrep",
+            configuredBackend: "zoekt",
+            state: "ready" as const,
+            reason: "zoekt_unavailable" as const,
+            symbolState: "ready" as const,
+            detail: "Zoekt index executable not available: C:/missing/zoekt-index.exe; using bootstrap fallback: fallback ready",
+          },
+        ];
+      },
+    } as unknown as IndexCoordinator,
+    searchService: {
+      async searchLexical() {
+        throw new Error("not used");
+      },
+      async findSymbols() {
+        throw new Error("not used");
+      },
+      async searchSemantic() {
+        throw new Error("not used");
+      },
+      async searchHybrid() {
+        throw new Error("not used");
+      },
+    } as unknown as SearchService,
+    sourceReader: {
+      async readRange() {
+        throw new Error("not used");
+      },
+    },
+  });
+
+  const statusResponse = await handlers.getIndexStatus({ repo: "sample" });
+  const statusPayload = statusResponse.structuredContent as {
+    index_status: Array<{
+      backend: string;
+      configuredBackend?: string;
+      diagnostics?: {
+        severity: string;
+        summary: string;
+        remedies?: string[];
+      };
+    }>;
+  };
+
+  assert.equal(statusPayload.index_status[0]?.backend, "ripgrep");
+  assert.equal(statusPayload.index_status[0]?.configuredBackend, "zoekt");
+  assert.equal(statusPayload.index_status[0]?.diagnostics?.severity, "warning");
+  assert.match(statusPayload.index_status[0]?.diagnostics?.summary ?? "", /Zoekt is not available/i);
+  assert.match((statusPayload.index_status[0]?.diagnostics?.remedies ?? []).join("\n"), /zoekt:install:windows|codeatlas\.wsl\.example/i);
+
+  const listResponse = await handlers.listRepos();
+  const listPayload = listResponse.structuredContent as {
+    repositories: Array<{ name: string }>;
+    index_status: Array<{ diagnostics?: { severity: string } }>;
+  };
+
+  assert.equal(listPayload.repositories.length, 1);
+  assert.equal(listPayload.repositories[0]?.name, "sample");
+  assert.equal(listPayload.index_status[0]?.diagnostics?.severity, "warning");
+
+  const refreshResponse = await handlers.refreshRepo({ repo: "sample" });
+  const refreshPayload = refreshResponse.structuredContent as {
+    index_status: {
+      diagnostics?: {
+        severity: string;
+        impact?: string;
+      };
+    };
+  };
+
+  assert.equal(refreshPayload.index_status.diagnostics?.severity, "warning");
+  assert.match(refreshPayload.index_status.diagnostics?.impact ?? "", /Zoekt-first path|fallback backend|degraded/i);
 });

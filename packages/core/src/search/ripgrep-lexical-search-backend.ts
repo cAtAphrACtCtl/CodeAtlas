@@ -3,6 +3,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { debugLog, toErrorDetails } from "../common/debug.js";
 import type { RipgrepLexicalBackendConfig } from "../configuration/config.js";
 import type { RepositoryIndexStatus } from "../metadata/metadata-store.js";
 import type { RepositoryRecord } from "../registry/repository-registry.js";
@@ -38,50 +39,110 @@ export class BootstrapRipgrepLexicalSearchBackend implements LexicalSearchBacken
   ) {}
 
   async prepareRepository(repository: RepositoryRecord): Promise<RepositoryIndexStatus> {
+    debugLog("ripgrep", "starting prepareRepository", {
+      repo: repository.name,
+      rootPath: repository.rootPath,
+      executable: this.backendConfig.executable,
+      fallbackToNaiveScan: this.backendConfig.fallbackToNaiveScan,
+      maxBytesPerFile: this.maxBytesPerFile,
+    });
+
     const repositoryStats = await stat(repository.rootPath);
 
     if (!repositoryStats.isDirectory()) {
+      debugLog("ripgrep", "prepareRepository failed because root path is not a directory", {
+        repo: repository.name,
+        rootPath: repository.rootPath,
+      });
       return {
         repo: repository.name,
         backend: this.kind,
         state: "error",
+        reason: "repository_root_not_directory",
         detail: "Repository root is not a directory",
       };
     }
 
     const rgAvailable = await this.isRipgrepAvailable();
     if (!rgAvailable && !this.backendConfig.fallbackToNaiveScan) {
+      debugLog("ripgrep", "prepareRepository failed because ripgrep is unavailable and fallback is disabled", {
+        repo: repository.name,
+        executable: this.backendConfig.executable,
+      });
       return {
         repo: repository.name,
         backend: this.kind,
         state: "error",
+        reason: "ripgrep_unavailable",
         detail: "ripgrep executable not found and fallback scanning disabled",
       };
     }
 
-    return {
+    const status: RepositoryIndexStatus = {
       repo: repository.name,
       backend: this.kind,
       state: "ready",
+      reason: rgAvailable ? undefined : "ripgrep_naive_fallback",
       lastIndexedAt: new Date().toISOString(),
       detail: rgAvailable ? "Lexical search available via ripgrep" : "Lexical search available via naive fallback",
     };
+
+    debugLog("ripgrep", "completed prepareRepository", {
+      repo: repository.name,
+      backend: status.backend,
+      state: status.state,
+      detail: status.detail,
+    });
+
+    return status;
   }
 
   async searchRepository(repository: RepositoryRecord, request: BackendSearchRequest): Promise<BackendSearchHit[]> {
+    debugLog("ripgrep", "starting searchRepository", {
+      repo: repository.name,
+      query: request.query,
+      limit: request.limit,
+    });
+
     const rgAvailable = await this.isRipgrepAvailable();
 
     if (rgAvailable) {
       try {
-        return await this.searchWithRipgrep(repository, request);
-      } catch {
+        const hits = await this.searchWithRipgrep(repository, request);
+        debugLog("ripgrep", "completed searchRepository with ripgrep", {
+          repo: repository.name,
+          query: request.query,
+          limit: request.limit,
+          hitCount: hits.length,
+        });
+        return hits;
+      } catch (error) {
+        debugLog("ripgrep", "ripgrep search failed", {
+          repo: repository.name,
+          query: request.query,
+          ...toErrorDetails(error),
+        });
         if (!this.backendConfig.fallbackToNaiveScan) {
           throw new Error(`ripgrep search failed for repository ${repository.name}`);
         }
       }
     }
 
-    return this.searchWithNaiveScan(repository, request);
+    if (!rgAvailable) {
+      debugLog("ripgrep", "searchRepository using naive fallback because ripgrep is unavailable", {
+        repo: repository.name,
+        query: request.query,
+      });
+    }
+
+    const hits = await this.searchWithNaiveScan(repository, request);
+    debugLog("ripgrep", "completed searchRepository with naive fallback", {
+      repo: repository.name,
+      query: request.query,
+      limit: request.limit,
+      hitCount: hits.length,
+    });
+    return hits;
   }
 
   async verifyRepositoryReady(): Promise<{ ready: boolean }> {
@@ -96,8 +157,15 @@ export class BootstrapRipgrepLexicalSearchBackend implements LexicalSearchBacken
     try {
       await execFileAsync(this.backendConfig.executable, ["--version"]);
       this.rgAvailable = true;
-    } catch {
+      debugLog("ripgrep", "ripgrep executable available", {
+        executable: this.backendConfig.executable,
+      });
+    } catch (error) {
       this.rgAvailable = false;
+      debugLog("ripgrep", "ripgrep executable unavailable", {
+        executable: this.backendConfig.executable,
+        ...toErrorDetails(error),
+      });
     }
 
     return this.rgAvailable;
@@ -161,6 +229,13 @@ export class BootstrapRipgrepLexicalSearchBackend implements LexicalSearchBacken
       }
     }
 
+    debugLog("ripgrep", "parsed ripgrep output", {
+      repo: repository.name,
+      query: request.query,
+      recordCount: records.length,
+      hitCount: hits.length,
+    });
+
     return hits;
   }
 
@@ -207,6 +282,13 @@ export class BootstrapRipgrepLexicalSearchBackend implements LexicalSearchBacken
       }
     }
 
+    debugLog("ripgrep", "completed naive scan", {
+      repo: repository.name,
+      query: request.query,
+      scannedFileCount: files.length,
+      hitCount: matches.length,
+    });
+
     return matches;
   }
 
@@ -235,6 +317,11 @@ export class BootstrapRipgrepLexicalSearchBackend implements LexicalSearchBacken
         }
       }
     }
+
+    debugLog("ripgrep", "walked repository for naive scan", {
+      rootPath,
+      fileCount: results.length,
+    });
 
     return results;
   }

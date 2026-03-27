@@ -3,6 +3,7 @@ import path from "node:path";
 
 import ts from "typescript";
 
+import { debugLog, toErrorDetails } from "../common/debug.js";
 import type { SymbolKind, SymbolRecord } from "../contracts/search.js";
 import type { RepositoryRecord } from "../registry/repository-registry.js";
 
@@ -63,13 +64,25 @@ function pushSymbol(
 
 export class TypeScriptSymbolExtractor {
   async extractRepository(repository: RepositoryRecord): Promise<SymbolRecord[]> {
+    debugLog("symbol-extractor", "starting extractRepository", {
+      repo: repository.name,
+      rootPath: repository.rootPath,
+    });
     const files = await this.walkRepository(repository.rootPath);
     const extracted = await Promise.all(files.map((filePath) => this.extractFile(repository, filePath)));
 
-    return extracted.flat().map((symbol) => ({
+    const symbols = extracted.flat().map((symbol) => ({
       repo: repository.name,
       ...symbol,
     }));
+
+    debugLog("symbol-extractor", "completed extractRepository", {
+      repo: repository.name,
+      fileCount: files.length,
+      symbolCount: symbols.length,
+    });
+
+    return symbols;
   }
 
   private async extractFile(repository: RepositoryRecord, filePath: string): Promise<ExtractedSymbol[]> {
@@ -77,41 +90,56 @@ export class TypeScriptSymbolExtractor {
       return [];
     }
 
-    const content = await readFile(filePath, "utf8");
     const relativePath = toPosixPath(path.relative(repository.rootPath, filePath));
-    const sourceFile = ts.createSourceFile(relativePath, content, ts.ScriptTarget.Latest, true);
-    const symbols: ExtractedSymbol[] = [];
 
-    const visit = (node: ts.Node, containerName?: string) => {
-      if (ts.isFunctionDeclaration(node)) {
-        pushSymbol(symbols, sourceFile, relativePath, getNameText(node.name), "function", node, containerName);
-      } else if (ts.isClassDeclaration(node)) {
-        const name = getNameText(node.name);
-        pushSymbol(symbols, sourceFile, relativePath, name, "class", node, containerName);
-        containerName = name ?? containerName;
-      } else if (ts.isInterfaceDeclaration(node)) {
-        const name = getNameText(node.name);
-        pushSymbol(symbols, sourceFile, relativePath, name, "interface", node, containerName);
-        containerName = name ?? containerName;
-      } else if (ts.isEnumDeclaration(node)) {
-        pushSymbol(symbols, sourceFile, relativePath, getNameText(node.name), "enum", node, containerName);
-      } else if (ts.isTypeAliasDeclaration(node)) {
-        pushSymbol(symbols, sourceFile, relativePath, getNameText(node.name), "type_alias", node, containerName);
-      } else if (ts.isVariableStatement(node)) {
-        for (const declaration of node.declarationList.declarations) {
-          pushSymbol(symbols, sourceFile, relativePath, getNameText(declaration.name), "variable", declaration, containerName);
+    try {
+      const content = await readFile(filePath, "utf8");
+      const sourceFile = ts.createSourceFile(relativePath, content, ts.ScriptTarget.Latest, true);
+      const symbols: ExtractedSymbol[] = [];
+
+      const visit = (node: ts.Node, containerName?: string) => {
+        if (ts.isFunctionDeclaration(node)) {
+          pushSymbol(symbols, sourceFile, relativePath, getNameText(node.name), "function", node, containerName);
+        } else if (ts.isClassDeclaration(node)) {
+          const name = getNameText(node.name);
+          pushSymbol(symbols, sourceFile, relativePath, name, "class", node, containerName);
+          containerName = name ?? containerName;
+        } else if (ts.isInterfaceDeclaration(node)) {
+          const name = getNameText(node.name);
+          pushSymbol(symbols, sourceFile, relativePath, name, "interface", node, containerName);
+          containerName = name ?? containerName;
+        } else if (ts.isEnumDeclaration(node)) {
+          pushSymbol(symbols, sourceFile, relativePath, getNameText(node.name), "enum", node, containerName);
+        } else if (ts.isTypeAliasDeclaration(node)) {
+          pushSymbol(symbols, sourceFile, relativePath, getNameText(node.name), "type_alias", node, containerName);
+        } else if (ts.isVariableStatement(node)) {
+          for (const declaration of node.declarationList.declarations) {
+            pushSymbol(symbols, sourceFile, relativePath, getNameText(declaration.name), "variable", declaration, containerName);
+          }
+        } else if (ts.isMethodDeclaration(node)) {
+          pushSymbol(symbols, sourceFile, relativePath, getNameText(node.name), "method", node, containerName);
+        } else if (ts.isPropertyDeclaration(node) || ts.isPropertySignature(node)) {
+          pushSymbol(symbols, sourceFile, relativePath, getNameText(node.name), "property", node, containerName);
         }
-      } else if (ts.isMethodDeclaration(node)) {
-        pushSymbol(symbols, sourceFile, relativePath, getNameText(node.name), "method", node, containerName);
-      } else if (ts.isPropertyDeclaration(node) || ts.isPropertySignature(node)) {
-        pushSymbol(symbols, sourceFile, relativePath, getNameText(node.name), "property", node, containerName);
-      }
 
-      ts.forEachChild(node, (child) => visit(child, containerName));
-    };
+        ts.forEachChild(node, (child) => visit(child, containerName));
+      };
 
-    visit(sourceFile);
-    return symbols;
+      visit(sourceFile);
+      debugLog("symbol-extractor", "completed extractFile", {
+        repo: repository.name,
+        path: relativePath,
+        symbolCount: symbols.length,
+      });
+      return symbols;
+    } catch (error) {
+      debugLog("symbol-extractor", "extractFile failed", {
+        repo: repository.name,
+        path: relativePath,
+        ...toErrorDetails(error),
+      });
+      throw error;
+    }
   }
 
   private async walkRepository(rootPath: string): Promise<string[]> {
@@ -140,6 +168,11 @@ export class TypeScriptSymbolExtractor {
         }
       }
     }
+
+    debugLog("symbol-extractor", "walked repository", {
+      rootPath,
+      fileCount: results.length,
+    });
 
     return results;
   }
