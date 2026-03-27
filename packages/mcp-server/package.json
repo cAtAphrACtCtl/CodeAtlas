@@ -1,6 +1,6 @@
 {
-  "name": "@codeatlas/mcp-server",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module"
+	"name": "@codeatlas/mcp-server",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module"
 }

@@ -1,6 +1,6 @@
 {
-  "name": "@codeatlas/core",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module"
+	"name": "@codeatlas/core",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module"
 }

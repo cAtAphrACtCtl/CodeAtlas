@@ -12,14 +12,14 @@ import path from "node:path";
  * - truncate to 40 characters
  */
 export function toSafeRepoSlug(repoName: string): string {
-  const slug = repoName
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]/g, "-")
-    .replace(/-{2,}/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
+	const slug = repoName
+		.toLowerCase()
+		.replace(/[^a-z0-9._-]/g, "-")
+		.replace(/-{2,}/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 40);
 
-  return slug || "repo";
+	return slug || "repo";
 }
 
 /**
@@ -31,8 +31,8 @@ export function toSafeRepoSlug(repoName: string): string {
  * - sanitized slug collisions are disambiguated
  */
 export function repoIdentityHash(repoName: string, rootPath: string): string {
-  const identity = `${repoName}\0${rootPath}`;
-  return createHash("sha256").update(identity).digest("hex").slice(0, 8);
+	const identity = `${repoName}\0${rootPath}`;
+	return createHash("sha256").update(identity).digest("hex").slice(0, 8);
 }
 
 /**
@@ -41,9 +41,9 @@ export function repoIdentityHash(repoName: string, rootPath: string): string {
  * Example: "my-project-a1b2c3d4"
  */
 export function toRepoKey(repoName: string, rootPath: string): string {
-  const slug = toSafeRepoSlug(repoName);
-  const hash = repoIdentityHash(repoName, rootPath);
-  return `${slug}-${hash}`;
+	const slug = toSafeRepoSlug(repoName);
+	const hash = repoIdentityHash(repoName, rootPath);
+	return `${slug}-${hash}`;
 }
 
 /**
@@ -55,11 +55,19 @@ export function toRepoKey(repoName: string, rootPath: string): string {
  * They are separated as named entry points so that callers express intent
  * and a future active/staging split does not require call-site changes.
  */
-export function getRepoIndexDir(sharedRoot: string, repoName: string, rootPath: string): string {
-  return path.join(sharedRoot, "repos", toRepoKey(repoName, rootPath));
+export function getRepoIndexDir(
+	sharedRoot: string,
+	repoName: string,
+	rootPath: string,
+): string {
+	return path.join(sharedRoot, "repos", toRepoKey(repoName, rootPath));
 }
 
 /** Alias for `getRepoIndexDir` — today they are identical. */
-export function getRepoBuildDir(sharedRoot: string, repoName: string, rootPath: string): string {
-  return getRepoIndexDir(sharedRoot, repoName, rootPath);
+export function getRepoBuildDir(
+	sharedRoot: string,
+	repoName: string,
+	rootPath: string,
+): string {
+	return getRepoIndexDir(sharedRoot, repoName, rootPath);
 }
