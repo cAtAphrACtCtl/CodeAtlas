@@ -3,10 +3,11 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { debugLog, toErrorDetails } from "../common/debug.js";
+import { toErrorDetails } from "../common/debug.js";
 import type { RipgrepLexicalBackendConfig } from "../configuration/config.js";
 import type { RepositoryIndexStatus } from "../metadata/metadata-store.js";
 import type { RepositoryRecord } from "../registry/repository-registry.js";
+import { getLogger, type Logger } from "../logging/logger.js";
 import type {
 	BackendSearchHit,
 	BackendSearchRequest,
@@ -40,16 +41,23 @@ export class BootstrapRipgrepLexicalSearchBackend
 {
 	readonly kind = "ripgrep";
 	private rgAvailable?: boolean;
+	private readonly logger: Logger | undefined;
 
 	constructor(
 		private readonly backendConfig: RipgrepLexicalBackendConfig,
 		private readonly maxBytesPerFile: number,
-	) {}
+	) {
+		this.logger = getLogger();
+	}
+
+	private logDebug(message: string, details?: Record<string, unknown>): void {
+		this.logger?.debug("ripgrep", message, { details });
+	}
 
 	async prepareRepository(
 		repository: RepositoryRecord,
 	): Promise<RepositoryIndexStatus> {
-		debugLog("ripgrep", "starting prepareRepository", {
+		this.logDebug("starting prepareRepository", {
 			repo: repository.name,
 			rootPath: repository.rootPath,
 			executable: this.backendConfig.executable,
@@ -60,8 +68,7 @@ export class BootstrapRipgrepLexicalSearchBackend
 		const repositoryStats = await stat(repository.rootPath);
 
 		if (!repositoryStats.isDirectory()) {
-			debugLog(
-				"ripgrep",
+			this.logDebug(
 				"prepareRepository failed because root path is not a directory",
 				{
 					repo: repository.name,
@@ -79,8 +86,7 @@ export class BootstrapRipgrepLexicalSearchBackend
 
 		const rgAvailable = await this.isRipgrepAvailable();
 		if (!rgAvailable && !this.backendConfig.fallbackToNaiveScan) {
-			debugLog(
-				"ripgrep",
+			this.logDebug(
 				"prepareRepository failed because ripgrep is unavailable and fallback is disabled",
 				{
 					repo: repository.name,
@@ -107,7 +113,7 @@ export class BootstrapRipgrepLexicalSearchBackend
 				: "Lexical search available via naive fallback",
 		};
 
-		debugLog("ripgrep", "completed prepareRepository", {
+		this.logDebug("completed prepareRepository", {
 			repo: repository.name,
 			backend: status.backend,
 			state: status.state,
@@ -121,7 +127,7 @@ export class BootstrapRipgrepLexicalSearchBackend
 		repository: RepositoryRecord,
 		request: BackendSearchRequest,
 	): Promise<BackendSearchHit[]> {
-		debugLog("ripgrep", "starting searchRepository", {
+		this.logDebug("starting searchRepository", {
 			repo: repository.name,
 			query: request.query,
 			limit: request.limit,
@@ -132,7 +138,7 @@ export class BootstrapRipgrepLexicalSearchBackend
 		if (rgAvailable) {
 			try {
 				const hits = await this.searchWithRipgrep(repository, request);
-				debugLog("ripgrep", "completed searchRepository with ripgrep", {
+				this.logDebug("completed searchRepository with ripgrep", {
 					repo: repository.name,
 					query: request.query,
 					limit: request.limit,
@@ -140,7 +146,7 @@ export class BootstrapRipgrepLexicalSearchBackend
 				});
 				return hits;
 			} catch (error) {
-				debugLog("ripgrep", "ripgrep search failed", {
+				this.logDebug("ripgrep search failed", {
 					repo: repository.name,
 					query: request.query,
 					...toErrorDetails(error),
@@ -154,8 +160,7 @@ export class BootstrapRipgrepLexicalSearchBackend
 		}
 
 		if (!rgAvailable) {
-			debugLog(
-				"ripgrep",
+			this.logDebug(
 				"searchRepository using naive fallback because ripgrep is unavailable",
 				{
 					repo: repository.name,
@@ -165,7 +170,7 @@ export class BootstrapRipgrepLexicalSearchBackend
 		}
 
 		const hits = await this.searchWithNaiveScan(repository, request);
-		debugLog("ripgrep", "completed searchRepository with naive fallback", {
+		this.logDebug("completed searchRepository with naive fallback", {
 			repo: repository.name,
 			query: request.query,
 			limit: request.limit,
@@ -186,12 +191,12 @@ export class BootstrapRipgrepLexicalSearchBackend
 		try {
 			await execFileAsync(this.backendConfig.executable, ["--version"]);
 			this.rgAvailable = true;
-			debugLog("ripgrep", "ripgrep executable available", {
+			this.logDebug("ripgrep executable available", {
 				executable: this.backendConfig.executable,
 			});
 		} catch (error) {
 			this.rgAvailable = false;
-			debugLog("ripgrep", "ripgrep executable unavailable", {
+			this.logDebug("ripgrep executable unavailable", {
 				executable: this.backendConfig.executable,
 				...toErrorDetails(error),
 			});
@@ -265,7 +270,7 @@ export class BootstrapRipgrepLexicalSearchBackend
 			}
 		}
 
-		debugLog("ripgrep", "parsed ripgrep output", {
+		this.logDebug("parsed ripgrep output", {
 			repo: repository.name,
 			query: request.query,
 			recordCount: records.length,
@@ -323,7 +328,7 @@ export class BootstrapRipgrepLexicalSearchBackend
 			}
 		}
 
-		debugLog("ripgrep", "completed naive scan", {
+		this.logDebug("completed naive scan", {
 			repo: repository.name,
 			query: request.query,
 			scannedFileCount: files.length,
@@ -359,7 +364,7 @@ export class BootstrapRipgrepLexicalSearchBackend
 			}
 		}
 
-		debugLog("ripgrep", "walked repository for naive scan", {
+		this.logDebug("walked repository for naive scan", {
 			rootPath,
 			fileCount: results.length,
 		});

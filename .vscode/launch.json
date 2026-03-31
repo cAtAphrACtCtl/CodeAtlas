@@ -4,25 +4,11 @@
     {
       "name": "Debug CodeAtlas MCP",
       "type": "node",
-      "request": "launch",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "--import",
-        "tsx"
-      ],
-      "program": "${workspaceFolder}/packages/mcp-server/src/main.ts",
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "CODEATLAS_CONFIG": "${workspaceFolder}/config/codeatlas.example.json",
-        "CODEATLAS_DEBUG": "runtime,mcp,search-service,ripgrep,zoekt,trace",
-        "CODEATLAS_LOG_FILE": "${workspaceFolder}/data/debug/codeatlas.log"
-      },
-      "windows": {
-        "env": {
-          "CODEATLAS_CONFIG": "${workspaceFolder}/config/codeatlas.windows.example.json"
-        }
-      },
-      "console": "integratedTerminal",
+      "request": "attach",
+      "port": 9230,
+      "restart": true,
+      "timeout": 30000,
+      "preLaunchTask": "codeatlas: debug mcp",
       "skipFiles": [
         "<node_internals>/**"
       ]

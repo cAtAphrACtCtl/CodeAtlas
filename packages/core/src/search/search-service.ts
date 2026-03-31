@@ -1,4 +1,3 @@
-import { debugLog } from "../common/debug.js";
 import { CodeAtlasError } from "../common/errors.js";
 import type { CodeAtlasConfig } from "../configuration/config.js";
 import type {
@@ -13,6 +12,7 @@ import type {
 	RepositoryRecord,
 	RepositoryRegistry,
 } from "../registry/repository-registry.js";
+import { getLogger, type Logger } from "../logging/logger.js";
 import type { LexicalSearchBackend } from "./lexical-search-backend.js";
 import {
 	type SymbolSearchBackend,
@@ -20,16 +20,24 @@ import {
 } from "./symbol-search-backend.js";
 
 export class SearchService {
+	private readonly logger: Logger | undefined;
+
 	constructor(
 		private readonly registry: RepositoryRegistry,
 		private readonly indexCoordinator: IndexCoordinator,
 		private readonly lexicalBackend: LexicalSearchBackend,
 		private readonly symbolSearchBackend: SymbolSearchBackend,
 		private readonly searchConfig: CodeAtlasConfig["search"],
-	) {}
+	) {
+		this.logger = getLogger();
+	}
+
+	private logDebug(message: string, details?: Record<string, unknown>): void {
+		this.logger?.debug("search-service", message, { details });
+	}
 
 	async searchLexical(request: SearchRequest): Promise<SearchResponse> {
-		debugLog("search-service", "starting lexical search", {
+		this.logDebug("starting lexical search", {
 			query: request.query,
 			repos: request.repos,
 			limit: request.limit,
@@ -74,7 +82,7 @@ export class SearchService {
 			results,
 		};
 
-		debugLog("search-service", "completed lexical search", {
+		this.logDebug("completed lexical search", {
 			query: request.query,
 			repoCount: repositories.length,
 			resultCount: response.results.length,
@@ -85,7 +93,7 @@ export class SearchService {
 	}
 
 	async searchSemantic(request: SearchRequest): Promise<SearchResponse> {
-		debugLog("search-service", "semantic search requested", {
+		this.logDebug("semantic search requested", {
 			query: request.query,
 			repos: request.repos,
 			limit: request.limit,
@@ -101,7 +109,7 @@ export class SearchService {
 	}
 
 	async searchHybrid(request: SearchRequest): Promise<SearchResponse> {
-		debugLog("search-service", "hybrid search requested", {
+		this.logDebug("hybrid search requested", {
 			query: request.query,
 			repos: request.repos,
 			limit: request.limit,
@@ -119,7 +127,7 @@ export class SearchService {
 	async findSymbols(
 		request: SymbolSearchRequest,
 	): Promise<SymbolSearchResponse> {
-		debugLog("search-service", "starting symbol search", {
+		this.logDebug("starting symbol search", {
 			query: request.query,
 			repos: request.repos,
 			kinds: request.kinds,
@@ -156,7 +164,7 @@ export class SearchService {
 				.slice(0, limit),
 		};
 
-		debugLog("search-service", "completed symbol search", {
+		this.logDebug("completed symbol search", {
 			query: request.query,
 			repoCount: repositories.length,
 			resultCount: response.results.length,
@@ -172,7 +180,7 @@ export class SearchService {
 	): Promise<RepositoryRecord[]> {
 		if (!repoNames || repoNames.length === 0) {
 			const repositories = await this.registry.listRepositories();
-			debugLog("search-service", "resolved repositories from full registry", {
+			this.logDebug("resolved repositories from full registry", {
 				repositoryCount: repositories.length,
 			});
 			return repositories;
@@ -186,7 +194,7 @@ export class SearchService {
 		);
 
 		if (missingRepositories.length > 0) {
-			debugLog("search-service", "failed to resolve repositories", {
+			this.logDebug("failed to resolve repositories", {
 				requestedRepositories: repoNames,
 				missingRepositories,
 			});
@@ -196,7 +204,7 @@ export class SearchService {
 		}
 
 		const resolved = repositories as RepositoryRecord[];
-		debugLog("search-service", "resolved requested repositories", {
+		this.logDebug("resolved requested repositories", {
 			requestedRepositories: repoNames,
 			repositoryCount: resolved.length,
 		});

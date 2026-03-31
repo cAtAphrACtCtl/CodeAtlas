@@ -22,6 +22,16 @@
     "serverName": "codeatlas",
     "serverVersion": "0.1.0"
   },
+  "logging": {
+    "enabled": true,
+    "level": "info",
+    "format": "jsonl",
+    "file": {
+      "enabled": true,
+      "path": "./data/debug/codeatlas.log.jsonl"
+    },
+    "includeErrorStreamTails": false
+  },
   "debug": {
     "scopes": [],
     "trace": false

@@ -1,25 +1,55 @@
-# MCP server wrapper that logs debug output to a file
+# MCP server wrapper that uses the configured structured log file.
 # Usage: .\scripts\mcp-dev.ps1
 
-$ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$LogFile = Join-Path $ProjectRoot "data\mcp-debug.log"
+function Resolve-CodeAtlasPath {
+    param(
+        [string]$BasePath,
+        [string]$CandidatePath
+    )
 
-# Ensure data directory exists
-$DataDir = Join-Path $ProjectRoot "data"
-if (-not (Test-Path $DataDir)) {
-    New-Item -ItemType Directory -Path $DataDir | Out-Null
+    if ([string]::IsNullOrWhiteSpace($CandidatePath)) {
+        return $null
+    }
+
+    if ([System.IO.Path]::IsPathRooted($CandidatePath)) {
+        return [System.IO.Path]::GetFullPath($CandidatePath)
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $BasePath $CandidatePath))
 }
 
-# Clear previous log
-"=== MCP Server Started: $(Get-Date) ===" | Out-File -FilePath $LogFile -Encoding utf8
+$ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$ConfigPath = Join-Path $ProjectRoot "config\codeatlas.dev.json"
+$Config = Get-Content -Raw -Path $ConfigPath | ConvertFrom-Json -Depth 20
+$LogFile = $null
+
+if ($Config.logging -and $Config.logging.file -and $Config.logging.file.enabled -ne $false) {
+    $LogFile = Resolve-CodeAtlasPath -BasePath (Split-Path -Parent $ConfigPath) -CandidatePath $Config.logging.file.path
+}
+
+# Ensure log directory exists when file logging is enabled
+if ($LogFile) {
+    $DataDir = Split-Path -Parent $LogFile
+    if (-not (Test-Path $DataDir)) {
+        New-Item -ItemType Directory -Path $DataDir | Out-Null
+    }
+
+    # Clear previous structured log
+    Set-Content -Path $LogFile -Value $null
+}
 
 # Set environment and run
-$env:CODEATLAS_CONFIG = "config/codeatlas.dev.json"
+$env:CODEATLAS_CONFIG = $ConfigPath
+
+if ($LogFile) {
+    Write-Host "Structured log file: $LogFile"
+} else {
+    Write-Host "Structured log file disabled in config"
+}
 
 Push-Location $ProjectRoot
 try {
-    # Run MCP server and capture stderr to log file while also showing it
-    npx tsx packages/mcp-server/src/main.ts 2>&1 | Tee-Object -FilePath $LogFile -Append
+    npx tsx packages/mcp-server/src/main.ts
 } finally {
     Pop-Location
 }

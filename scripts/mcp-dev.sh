@@ -1,18 +1,21 @@
 #!/bin/bash
-# MCP server wrapper that logs debug output to a file
+# MCP server wrapper that uses the configured structured log file.
 # Usage: ./scripts/mcp-dev.sh
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-LOG_FILE="$PROJECT_ROOT/data/mcp-debug.log"
+CONFIG_PATH="$PROJECT_ROOT/config/codeatlas.dev.json"
 
-# Ensure data directory exists
-mkdir -p "$PROJECT_ROOT/data"
+LOG_FILE="$(node --input-type=module -e "import fs from 'node:fs'; import path from 'node:path'; const configPath = process.argv[1]; const config = JSON.parse(fs.readFileSync(configPath, 'utf8')); const raw = config.logging?.file?.enabled === false ? '' : config.logging?.file?.path ?? ''; if (raw) { console.log(path.isAbsolute(raw) ? raw : path.resolve(path.dirname(configPath), raw)); }" "$CONFIG_PATH")"
 
-# Clear previous log
-echo "=== MCP Server Started: $(date) ===" > "$LOG_FILE"
+if [ -n "$LOG_FILE" ]; then
+  mkdir -p "$(dirname "$LOG_FILE")"
+  : > "$LOG_FILE"
+  echo "Structured log file: $LOG_FILE"
+else
+  echo "Structured log file disabled in config"
+fi
 
-# Run the MCP server, tee stderr to log file
 cd "$PROJECT_ROOT"
-CODEATLAS_CONFIG=config/codeatlas.dev.json \
-  npx tsx packages/mcp-server/src/main.ts 2> >(tee -a "$LOG_FILE" >&2)
+CODEATLAS_CONFIG="$CONFIG_PATH" \
+  npx tsx packages/mcp-server/src/main.ts

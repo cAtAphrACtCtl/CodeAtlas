@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { debugLog, toErrorDetails } from "../common/debug.js";
+import { toErrorDetails } from "../common/debug.js";
 import { CodeAtlasError, invariant } from "../common/errors.js";
 import type { ReadSourceResponse } from "../contracts/search.js";
+import { getLogger, type Logger } from "../logging/logger.js";
 import type { RepositoryRecord } from "../registry/repository-registry.js";
 import type { SourceReader } from "./source-reader.js";
 
@@ -12,13 +13,23 @@ function toPosixPath(filePath: string): string {
 }
 
 export class FileSystemSourceReader implements SourceReader {
+	private readonly logger: Logger | undefined;
+
+	constructor() {
+		this.logger = getLogger();
+	}
+
+	private logDebug(message: string, details?: Record<string, unknown>): void {
+		this.logger?.debug("source-reader", message, { details });
+	}
+
 	async readRange(
 		repository: RepositoryRecord,
 		relativePath: string,
 		startLine: number,
 		endLine: number,
 	): Promise<ReadSourceResponse> {
-		debugLog("source-reader", "starting readRange", {
+		this.logDebug("starting readRange", {
 			repo: repository.name,
 			relativePath,
 			startLine,
@@ -35,7 +46,7 @@ export class FileSystemSourceReader implements SourceReader {
 			relativeFromRoot.startsWith("..") ||
 			path.isAbsolute(relativeFromRoot)
 		) {
-			debugLog("source-reader", "readRange rejected path escape", {
+			this.logDebug("readRange rejected path escape", {
 				repo: repository.name,
 				relativePath,
 				resolvedPath,
@@ -53,7 +64,7 @@ export class FileSystemSourceReader implements SourceReader {
 			const safeEndLine = Math.min(endLine, lines.length);
 			const content = lines.slice(startLine - 1, safeEndLine).join("\n");
 
-			debugLog("source-reader", "completed readRange", {
+			this.logDebug("completed readRange", {
 				repo: repository.name,
 				relativePath: toPosixPath(relativeFromRoot),
 				lineCount: lines.length,
@@ -69,7 +80,7 @@ export class FileSystemSourceReader implements SourceReader {
 				content,
 			};
 		} catch (error) {
-			debugLog("source-reader", "readRange failed", {
+			this.logDebug("readRange failed", {
 				repo: repository.name,
 				relativePath,
 				resolvedPath,

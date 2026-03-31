@@ -1,11 +1,10 @@
-import { debugLog, initializeDebug } from "./common/debug.js";
+import { initializeDebug } from "./common/debug.js";
 import { type CodeAtlasConfig, loadConfig } from "./configuration/config.js";
 import { ConfigurationService } from "./configuration/configuration-service.js";
 import { RepositoryDiscoveryService } from "./discovery/repository-discovery.js";
 import { IndexCoordinator } from "./indexer/index-coordinator.js";
 import { Logger, setGlobalLogger } from "./logging/logger.js";
 import { PinoFileSink } from "./logging/pino-file-sink.js";
-import { StderrSink } from "./logging/stderr-sink.js";
 import { FileMetadataStore } from "./metadata/file-metadata-store.js";
 import { FileSystemSourceReader } from "./reader/filesystem-source-reader.js";
 import { FileRepositoryRegistry } from "./registry/file-repository-registry.js";
@@ -52,9 +51,6 @@ export async function createCodeAtlasServices(
 	if (config.logging.file.enabled) {
 		logger.addSink(new PinoFileSink(config.logging.file.path, "debug"));
 	}
-	if (config.logging.level === "debug") {
-		logger.addSink(new StderrSink());
-	}
 	setGlobalLogger(logger);
 
 	logger.info("runtime", "loaded configuration", {
@@ -68,15 +64,6 @@ export async function createCodeAtlasServices(
 			loggingLevel: config.logging.level,
 			loggingFilePath: config.logging.file.path,
 		},
-	});
-
-	debugLog("runtime", "loaded configuration", {
-		baseDir,
-		configFilePath: options.configFilePath ?? process.env.CODEATLAS_CONFIG,
-		lexicalBackend: config.lexicalBackend.kind,
-		registryPath: config.registryPath,
-		metadataPath: config.metadataPath,
-		indexRoot: config.indexRoot,
 	});
 	const configurationService = new ConfigurationService(baseDir);
 	const discoveryService = new RepositoryDiscoveryService();
@@ -104,12 +91,6 @@ export async function createCodeAtlasServices(
 		symbolSearchBackend,
 		config.search,
 	);
-
-	debugLog("runtime", "initialized runtime services", {
-		lexicalBackend: lexicalBackend.kind,
-		symbolIndexRoot: config.indexRoot,
-		maxBytesPerFile: config.search.maxBytesPerFile,
-	});
 
 	logger.info("runtime", "initialized runtime services", {
 		backend: lexicalBackend.kind,

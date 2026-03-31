@@ -153,6 +153,20 @@ function Write-ConfigSnippet {
     lexicalBackend = @{
       kind = "zoekt"
       zoektIndexExecutable = $ZoektIndexExe
+      zoektSearchExecutable = $ZoektExe
+      indexRoot = $IndexDir
+      allowBootstrapFallback = $true
+      bootstrapFallback = @{
+        kind = "ripgrep"
+        executable = "rg"
+        fallbackToNaiveScan = $true
+      }
+    }
+  } | ConvertTo-Json -Depth 5
+
+  Write-Host $configSnippet
+}
+
 function Update-FileContentRegex {
   param(
     [string]$Path,
@@ -173,43 +187,15 @@ function Apply-WindowsBuildPatch {
   param([string]$SourceRoot)
 
   $builderPath = Join-Path $SourceRoot "index/builder.go"
-  # Remove the unix import while keeping surrounding imports, tolerating whitespace/line-ending changes.
+
+  # Remove unix-only import while preserving nearby import structure.
   $importPattern = '(?ms)\t"github\.com/rs/xid"\s*\r?\n\t"golang\.org/x/sys/unix"\s*\r?\n\s*\r?\n\t"maps"'
   $importReplacement = "`t`"github.com/rs/xid`"`r`n`r`n`t`"maps`""
   Update-FileContentRegex -Path $builderPath -Pattern $importPattern -NewValue $importReplacement
 
-  # Remove the umask variable and init function in a way that is resilient to formatting changes.
+  # Remove unix-only umask block from builder.go.
   $umaskPattern = '(?ms)//\s*umask holds the Umask of the current process\s+var\s+umask\s+os\.FileMode\s+func\s+init\(\)\s*\{\s*umask\s*=\s*os\.FileMode\(unix\.Umask\(0\)\)\s*unix\.Umask\(int\(umask\)\)\s*\}\s*'
   Update-FileContentRegex -Path $builderPath -Pattern $umaskPattern -NewValue ""
-      }
-    }
-  } | ConvertTo-Json -Depth 5
-
-  Write-Host $configSnippet
-}
-
-function Update-FileContent {
-  param(
-    [string]$Path,
-    [string]$OldValue,
-    [string]$NewValue
-  )
-
-  $content = Get-Content -Raw -Path $Path
-  if (-not $content.Contains($OldValue)) {
-    throw "Expected content was not found in $Path"
-  }
-
-  $updated = $content.Replace($OldValue, $NewValue)
-  [System.IO.File]::WriteAllText($Path, $updated)
-}
-
-function Apply-WindowsBuildPatch {
-  param([string]$SourceRoot)
-
-  $builderPath = Join-Path $SourceRoot "index/builder.go"
-  Update-FileContent -Path $builderPath -OldValue "`t`"github.com/rs/xid`"`r`n`t`"golang.org/x/sys/unix`"`r`n`r`n`t`"maps`"" -NewValue "`t`"github.com/rs/xid`"`r`n`r`n`t`"maps`""
-  Update-FileContent -Path $builderPath -OldValue "// umask holds the Umask of the current process`r`nvar umask os.FileMode`r`n`r`nfunc init() {`r`n`tumask = os.FileMode(unix.Umask(0))`r`n`tunix.Umask(int(umask))`r`n}`r`n" -NewValue ""
 
   $indexFileWindows = @'
 // Copyright 2016 Google Inc. All rights reserved.

@@ -1,9 +1,10 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
 
-import { debugLog, toErrorDetails } from "../common/debug.js";
+import { toErrorDetails } from "../common/debug.js";
 import { CodeAtlasError } from "../common/errors.js";
 import { readJsonFile, writeJsonFile } from "../common/json-file.js";
+import { getLogger, type Logger } from "../logging/logger.js";
 import type {
 	RepositoryRecord,
 	RepositoryRegistration,
@@ -15,14 +16,22 @@ interface RegistryDocument {
 }
 
 export class FileRepositoryRegistry implements RepositoryRegistry {
-	constructor(private readonly registryPath: string) {}
+	private readonly logger: Logger | undefined;
+
+	constructor(private readonly registryPath: string) {
+		this.logger = getLogger();
+	}
+
+	private logDebug(message: string, details?: Record<string, unknown>): void {
+		this.logger?.debug("registry", message, { details });
+	}
 
 	async listRepositories(): Promise<RepositoryRecord[]> {
 		const document = await this.readDocument();
 		const repositories = [...document.repositories].sort((left, right) =>
 			left.name.localeCompare(right.name),
 		);
-		debugLog("registry", "listed repositories", {
+		this.logDebug("listed repositories", {
 			registryPath: this.registryPath,
 			repositoryCount: repositories.length,
 		});
@@ -38,7 +47,7 @@ export class FileRepositoryRegistry implements RepositoryRegistry {
 		input: RepositoryRegistration,
 	): Promise<RepositoryRecord> {
 		const rootPath = path.resolve(input.rootPath);
-		debugLog("registry", "registering repository", {
+		this.logDebug("registering repository", {
 			name: input.name,
 			rootPath,
 			branch: input.branch,
@@ -70,7 +79,7 @@ export class FileRepositoryRegistry implements RepositoryRegistry {
 		document.repositories.push(record);
 		await writeJsonFile(this.registryPath, document);
 
-		debugLog("registry", "registered repository", {
+		this.logDebug("registered repository", {
 			name: record.name,
 			rootPath: record.rootPath,
 			repositoryCount: document.repositories.length,
@@ -84,13 +93,13 @@ export class FileRepositoryRegistry implements RepositoryRegistry {
 			const document = await readJsonFile<RegistryDocument>(this.registryPath, {
 				repositories: [],
 			});
-			debugLog("registry", "loaded registry document", {
+			this.logDebug("loaded registry document", {
 				registryPath: this.registryPath,
 				repositoryCount: document.repositories.length,
 			});
 			return document;
 		} catch (error) {
-			debugLog("registry", "failed to read registry document", {
+			this.logDebug("failed to read registry document", {
 				registryPath: this.registryPath,
 				...toErrorDetails(error),
 			});

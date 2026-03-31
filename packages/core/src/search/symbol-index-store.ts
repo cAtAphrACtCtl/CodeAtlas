@@ -1,9 +1,10 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { debugLog, toErrorDetails } from "../common/debug.js";
+import { toErrorDetails } from "../common/debug.js";
 import { readJsonFile, writeJsonFile } from "../common/json-file.js";
 import type { SymbolRecord } from "../contracts/search.js";
+import { getLogger, type Logger } from "../logging/logger.js";
 
 interface SymbolIndexDocument {
 	repo: string;
@@ -36,7 +37,15 @@ function toSafeFileName(repo: string): string {
 }
 
 export class FileSymbolIndexStore implements SymbolIndexStore {
-	constructor(private readonly indexRoot: string) {}
+	private readonly logger: Logger | undefined;
+
+	constructor(private readonly indexRoot: string) {
+		this.logger = getLogger();
+	}
+
+	private logDebug(message: string, details?: Record<string, unknown>): void {
+		this.logger?.debug("symbol-index", message, { details });
+	}
 
 	async getSymbols(repo: string): Promise<SymbolRecord[]> {
 		const indexPath = this.getIndexPath(repo);
@@ -50,14 +59,14 @@ export class FileSymbolIndexStore implements SymbolIndexStore {
 			const symbols = Array.isArray(document.symbols)
 				? document.symbols.filter(isSymbolRecord)
 				: [];
-			debugLog("symbol-index", "loaded symbols", {
+			this.logDebug("loaded symbols", {
 				repo,
 				indexPath,
 				symbolCount: symbols.length,
 			});
 			return symbols;
 		} catch (error) {
-			debugLog("symbol-index", "failed to load symbols", {
+			this.logDebug("failed to load symbols", {
 				repo,
 				indexPath,
 				...toErrorDetails(error),
@@ -73,7 +82,7 @@ export class FileSymbolIndexStore implements SymbolIndexStore {
 			repo,
 			symbols,
 		});
-		debugLog("symbol-index", "stored symbols", {
+		this.logDebug("stored symbols", {
 			repo,
 			indexPath,
 			symbolCount: symbols.length,

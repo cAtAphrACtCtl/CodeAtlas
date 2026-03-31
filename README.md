@@ -73,13 +73,41 @@ Important boundary:
 - external dependency installation stays outside MCP and remains a manual script or operator action
 - Zoekt setup is still handled through the repository scripts and example configs rather than a new MCP install tool
 
-## Debug Logging
+## Structured Logging
 
-CodeAtlas debug logging stays stderr-first so it works in terminals, debugger consoles, and MCP host processes without an IDE-specific integration layer.
+CodeAtlas now uses an IDE-agnostic structured logging layer owned by `packages/core`. The logger emits structured events to sinks instead of relying on ad hoc `console.error` or legacy `debugLog` output.
 
-- Enable scopes with `CODEATLAS_DEBUG`, for example `CODEATLAS_DEBUG=mcp,search-service,ripgrep,trace`
-- Mirror the same log stream to a file with `CODEATLAS_LOG_FILE`, for example `CODEATLAS_LOG_FILE=./data/debug/codeatlas.log`
-- Configuration file `debug.scopes` and `debug.trace` still work, but `CODEATLAS_DEBUG` is the fastest way to turn logging on for local troubleshooting
+Current behavior:
+
+- log configuration lives under the top-level `logging` block
+- the default file sink writes JSONL to `data/debug/codeatlas.log.jsonl`
+- `logging.level=debug` increases file log verbosity; it does not automatically mirror logs to stderr
+- MCP request logs automatically carry request context such as `requestId`, `toolName`, `durationMs`, and structured event names like `mcp.request.start`
+- `logging.includeErrorStreamTails=true` includes stderr and stdout tails in structured error payloads
+
+Example configuration:
+
+```json
+{
+	"logging": {
+		"enabled": true,
+		"level": "debug",
+		"format": "jsonl",
+		"file": {
+			"enabled": true,
+			"path": "./data/debug/codeatlas.log.jsonl"
+		},
+		"includeErrorStreamTails": true
+	}
+}
+```
+
+Compatibility note:
+
+- the older `debug` block is still accepted for backward compatibility
+- non-empty `debug.scopes` currently implies `logging.level=debug`
+- `debug.trace` maps to `logging.includeErrorStreamTails`
+- legacy debug environment flags still influence verbose error-tail capture, but structured log level and file destination are configured through `logging`
 
 For agent-focused local MCP verification on Windows, use the dedicated startup script:
 
@@ -87,21 +115,27 @@ For agent-focused local MCP verification on Windows, use the dedicated startup s
 npm run mcp:agent
 ```
 
-That command launches the MCP server with agent-oriented scopes and writes to a dedicated log file at `data/debug/codeatlas.agent.log`.
+That command now defaults to `config/codeatlas.dev.json`, so it starts with debug-level structured logging enabled. The structured log destination still comes from that config's `logging.file.path` value unless you override the script parameters directly.
 
 Use this flow when you need to prove that a real MCP client request hit the local server:
 
 1. Run `npm run mcp:agent`
 2. Use a real MCP client to call `register_repo`, `find_symbol`, or `code_search`
-3. Inspect `data/debug/codeatlas.agent.log` for `codeatlas:mcp` and `codeatlas:search-service` lines
+3. Inspect the configured JSONL log file for entries such as `"scope":"mcp"`, `"event":"mcp.request.start"`, and `"scope":"search-service"`
+
+For verbose local troubleshooting, `config/codeatlas.dev.json` is the most useful starting point because it enables debug-level structured logging.
 
 On Windows PowerShell, a practical local troubleshooting launch looks like this:
 
 ```powershell
-$env:CODEATLAS_CONFIG='C:\git\GitHub\LukeLu\CodeAtlas\config\codeatlas.windows.example.json'
-$env:CODEATLAS_DEBUG='runtime,mcp,search-service,ripgrep,zoekt,trace'
-$env:CODEATLAS_LOG_FILE='C:\git\GitHub\LukeLu\CodeAtlas\data\debug\codeatlas.log'
+$env:CODEATLAS_CONFIG='C:\git\GitHub\LukeLu\CodeAtlas\config\codeatlas.dev.json'
 node --import tsx .\packages\mcp-server\src\main.ts
+```
+
+Inspect the resulting JSONL stream with:
+
+```powershell
+Get-Content -Path .\data\debug\codeatlas.log.jsonl -Tail 30
 ```
 
 ## Search Result Contract
@@ -468,9 +502,9 @@ For a smooth local development loop in VS Code:
 
 Available development tasks:
 
-- set `CODEATLAS_DEBUG=*` to emit verbose runtime diagnostics to stderr, or target scopes such as `runtime`, `mcp`, `indexer`, `zoekt`, `ripgrep`, `search-service`, `symbol-search`, `symbol-extractor`, `symbol-index`, `source-reader`, `registry`, and `metadata`
-- add the `trace` scope when you also want stderr/stdout tails from backend process failures, for example `CODEATLAS_DEBUG=zoekt,trace`
-- set `CODEATLAS_DEBUG=symbol-search` for focused symbol search diagnostics only
+- set `logging.level` to `debug` in your active config, or use `config/codeatlas.dev.json`, to emit verbose structured diagnostics to the configured JSONL file
+- inspect the `scope` field in JSONL output to focus on layers such as `runtime`, `mcp`, `indexer`, `zoekt`, `ripgrep`, `search-service`, `symbol-search`, `symbol-extractor`, `symbol-index`, `source-reader`, `registry`, and `metadata`
+- keep `logging.includeErrorStreamTails=true` when you also want stderr and stdout tails from backend process failures
 - use `node "scripts/mcp-functional-review.mjs"` for a reusable real-MCP functional review against the current repository; it prefers Zoekt when Zoekt binaries are available in the active runtime
 - use `node "scripts/mcp-refresh-eval.mjs"` to measure initial indexing, repeated refresh, query latency, and refresh-after-update behavior through a real MCP session
 - use `node "scripts/mcp-lexical-boundary-eval.mjs"` to compare ripgrep-backed search behavior with naive fallback around skipped directories, hidden files, binary files, and max file size limits

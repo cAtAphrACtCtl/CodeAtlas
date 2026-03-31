@@ -219,11 +219,16 @@ Current coupling note:
 - this keeps readiness simple, but it also mixes pure Zoekt validation cost with symbol extraction cost
 - near-term architecture work is to validate Zoekt indexing and repository update behavior first, then decide whether symbol refresh should be decoupled or reduced
 
-## Debug Observability
+## Structured Logging And Observability
 
-- Runtime and MCP diagnostics remain transport-agnostic and stderr-first.
-- Debug scopes are enabled through configuration or `CODEATLAS_DEBUG`.
-- For low-cost local troubleshooting, stderr logs can be mirrored to a file with `CODEATLAS_LOG_FILE` without introducing IDE-specific logging dependencies into `packages/core` or `packages/mcp-server`.
+- Runtime and MCP diagnostics now go through a shared `Logger` abstraction in `packages/core`.
+- The logger emits structured `LogEvent` objects to pluggable sinks rather than mixing direct `console.error` calls with transport-specific logging styles.
+- The primary sink is a JSONL file sink backed by pino. This keeps machine-readable operational logs available for local inspection, automation, and MCP troubleshooting.
+- `logging.level` controls event verbosity for the configured sinks. The default runtime path writes structured logs to file rather than auto-mirroring them to stderr.
+- MCP handlers establish request context with `AsyncLocalStorage`, so downstream logs can automatically include `requestId`, `toolName`, optional `operationId`, and request duration without threading those values through every method signature.
+- Structured event names such as `mcp.request.start`, `mcp.request.complete`, and `mcp.request.error` are emitted at the transport boundary while lower-level services log with stable scopes such as `indexer`, `zoekt`, `search-service`, `registry`, and `metadata`.
+- Logging configuration is owned by the top-level `logging` block in `CodeAtlasConfig`, including enablement, level, file path, format, and verbose error-tail capture.
+- The legacy `debug` block remains as a backward-compatibility bridge for older configs, but the active operational logging model is the structured logger.
 - lexical readiness is now tracked separately from symbol readiness so lexical search can remain usable when symbol state is stale or failed
 
 ### Readiness And Refresh Flow
@@ -422,7 +427,7 @@ Operational note:
 
 - real MCP functional review should use the stdio-based workflow captured in `docs/mcp-functional-review.md` rather than handler-only testing when validating end-to-end behavior
 - repeated refresh-after-update and latency validation can now use the dedicated real-MCP workflow in `scripts/mcp-refresh-eval.mjs`
-- debug tracing is intentionally available across runtime, handler, indexing, backend, symbol, registry, metadata, and source-reader layers through `CODEATLAS_DEBUG`
+- debug-level structured logging is intentionally available across runtime, handler, indexing, backend, symbol, registry, metadata, and source-reader layers through the shared logger, with script-local overrides such as `CODEATLAS_LOG_LEVEL=debug` for evaluation workflows
 
 ### Phase 3: chunk-based indexing and local embeddings (deferred)
 

@@ -1,5 +1,5 @@
-import { debugLog } from "../common/debug.js";
 import type { SymbolRecord, SymbolSearchRequest } from "../contracts/search.js";
+import { getLogger, type Logger } from "../logging/logger.js";
 import type { SymbolIndexStore } from "./symbol-index-store.js";
 
 export function scoreSymbol(
@@ -34,7 +34,15 @@ export function scoreSymbol(
 }
 
 export class SymbolSearchBackend {
-	constructor(private readonly symbolIndexStore: SymbolIndexStore) {}
+	private readonly logger: Logger | undefined;
+
+	constructor(private readonly symbolIndexStore: SymbolIndexStore) {
+		this.logger = getLogger();
+	}
+
+	private logDebug(message: string, details?: Record<string, unknown>): void {
+		this.logger?.debug("symbol-search", message, { details });
+	}
 
 	async searchRepository(
 		repo: string,
@@ -95,7 +103,7 @@ export class SymbolSearchBackend {
 					scoreSymbol(left, request.query, exactMode),
 			);
 
-		debugLog("symbol-search", "symbol search completed", {
+		this.logDebug("symbol search completed", {
 			repo,
 			query: request.query,
 			exact: exactMode,

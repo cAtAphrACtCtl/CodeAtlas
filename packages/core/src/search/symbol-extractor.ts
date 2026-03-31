@@ -3,8 +3,9 @@ import path from "node:path";
 
 import ts from "typescript";
 
-import { debugLog, toErrorDetails } from "../common/debug.js";
+import { toErrorDetails } from "../common/debug.js";
 import type { SymbolKind, SymbolRecord } from "../contracts/search.js";
+import { getLogger, type Logger } from "../logging/logger.js";
 import type { RepositoryRecord } from "../registry/repository-registry.js";
 
 const supportedExtensions = new Set([
@@ -90,10 +91,20 @@ function pushSymbol(
 }
 
 export class TypeScriptSymbolExtractor {
+	private readonly logger: Logger | undefined;
+
+	constructor() {
+		this.logger = getLogger();
+	}
+
+	private logDebug(message: string, details?: Record<string, unknown>): void {
+		this.logger?.debug("symbol-extractor", message, { details });
+	}
+
 	async extractRepository(
 		repository: RepositoryRecord,
 	): Promise<SymbolRecord[]> {
-		debugLog("symbol-extractor", "starting extractRepository", {
+		this.logDebug("starting extractRepository", {
 			repo: repository.name,
 			rootPath: repository.rootPath,
 		});
@@ -107,7 +118,7 @@ export class TypeScriptSymbolExtractor {
 			...symbol,
 		}));
 
-		debugLog("symbol-extractor", "completed extractRepository", {
+		this.logDebug("completed extractRepository", {
 			repo: repository.name,
 			fileCount: files.length,
 			symbolCount: symbols.length,
@@ -234,14 +245,14 @@ export class TypeScriptSymbolExtractor {
 			};
 
 			visit(sourceFile);
-			debugLog("symbol-extractor", "completed extractFile", {
+			this.logDebug("completed extractFile", {
 				repo: repository.name,
 				path: relativePath,
 				symbolCount: symbols.length,
 			});
 			return symbols;
 		} catch (error) {
-			debugLog("symbol-extractor", "extractFile failed", {
+			this.logDebug("extractFile failed", {
 				repo: repository.name,
 				path: relativePath,
 				...toErrorDetails(error),
@@ -277,7 +288,7 @@ export class TypeScriptSymbolExtractor {
 			}
 		}
 
-		debugLog("symbol-extractor", "walked repository", {
+		this.logDebug("walked repository", {
 			rootPath,
 			fileCount: results.length,
 		});

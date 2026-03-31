@@ -97,6 +97,8 @@ async function main() {
   const registryPath = path.join(tempRoot, "repositories.local.json");
   const metadataPath = path.join(tempRoot, "index-status.local.json");
   const indexRoot = path.join(tempRoot, "indexes");
+  const logPath = path.join(tempRoot, "codeatlas-functional-review.log.jsonl");
+  const logLevel = process.env.CODEATLAS_LOG_LEVEL ?? "info";
   const lexicalBackend = await resolvePreferredLexicalBackend(workspaceRoot);
 
   try {
@@ -117,6 +119,16 @@ async function main() {
             serverName: "codeatlas-functional-review",
             serverVersion: "0.1.0",
           },
+          logging: {
+            enabled: true,
+            level: logLevel,
+            format: "jsonl",
+            file: {
+              enabled: true,
+              path: logPath,
+            },
+            includeErrorStreamTails: true,
+          },
         },
         null,
         2,
@@ -130,7 +142,6 @@ async function main() {
       cwd: workspaceRoot,
       env: {
         CODEATLAS_CONFIG: configPath,
-        ...(process.env.CODEATLAS_DEBUG ? { CODEATLAS_DEBUG: process.env.CODEATLAS_DEBUG } : {}),
       },
       stderr: "pipe",
     });
@@ -324,6 +335,8 @@ async function main() {
 
     console.log("REGISTRY_FILE", registryText);
     console.log("METADATA_FILE", metadataText);
+    console.log("LOG_LEVEL", logLevel);
+    console.log("LOG_FILE", logPath);
     console.log("LEXICAL_BACKEND", lexicalBackend.expectedBackend);
     console.log("STDERR", stderrChunks.join(""));
     console.log("Functional review completed successfully.");

@@ -12,6 +12,5 @@ export {
 	runWithRequestContext,
 } from "./context.js";
 export { PinoFileSink } from "./pino-file-sink.js";
-export { StderrSink } from "./stderr-sink.js";
 export { CallbackSink } from "./callback-sink.js";
 export type { LogEventCallback } from "./callback-sink.js";

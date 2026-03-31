@@ -1,6 +1,5 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-import { debugLog, toErrorDetails } from "../../core/src/common/debug.js";
 import { getLogger } from "../../core/src/logging/logger.js";
 import { createCodeAtlasServices } from "../../core/src/runtime.js";
 import { createHandlers } from "./mcp/handlers.js";
@@ -10,13 +9,16 @@ async function main(): Promise<void> {
 	const services = await createCodeAtlasServices();
 	const logger = services.logger;
 
-	debugLog("runtime", "created CodeAtlas services", {
-		serverName: services.config.mcp.serverName,
-		serverVersion: services.config.mcp.serverVersion,
-		lexicalBackend: services.config.lexicalBackend.kind,
-		registryPath: services.config.registryPath,
-		metadataPath: services.config.metadataPath,
-		indexRoot: services.config.indexRoot,
+	logger.info("runtime", "created CodeAtlas services", {
+		event: "mcp.server.init",
+		details: {
+			serverName: services.config.mcp.serverName,
+			serverVersion: services.config.mcp.serverVersion,
+			lexicalBackend: services.config.lexicalBackend.kind,
+			registryPath: services.config.registryPath,
+			metadataPath: services.config.metadataPath,
+			indexRoot: services.config.indexRoot,
+		},
 	});
 
 	const handlers = createHandlers({
@@ -37,20 +39,22 @@ async function main(): Promise<void> {
 		event: "mcp.server.ready",
 		details: { transport: "stdio" },
 	});
-	debugLog("runtime", "MCP server connected", {
-		transport: "stdio",
-	});
-	console.error("CodeAtlas MCP server ready.");
 }
 
 main().catch((error) => {
 	const logger = getLogger();
-	logger?.error("runtime", "MCP server failed to start", {
-		event: "mcp.server.error",
-		error: error instanceof Error ? { name: error.name, message: error.message } : { message: String(error) },
-	});
-	debugLog("runtime", "MCP server failed to start", toErrorDetails(error));
-	console.error("CodeAtlas MCP server failed to start.");
-	console.error(error);
+	if (logger) {
+		logger.error("runtime", "MCP server failed to start", {
+			event: "mcp.server.error",
+			error:
+				error instanceof Error
+					? { name: error.name, message: error.message }
+					: { message: String(error) },
+		});
+	} else {
+		console.error("CodeAtlas MCP server failed to start.");
+		console.error(error);
+	}
+	logger?.close();
 	process.exit(1);
 });

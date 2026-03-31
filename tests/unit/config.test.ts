@@ -99,7 +99,7 @@ test("loadConfig uses default debug settings when not specified", async (t) => {
 	assert.deepEqual(config.debug, { scopes: [], trace: false });
 });
 
-test("defaultConfig keeps debug logging opt-in", () => {
+test("defaultConfig keeps legacy debug compatibility opt-in", () => {
 	const config = defaultConfig();
 	assert.equal(config.debug.scopes.length, 0);
 	assert.equal(config.debug.trace, false);

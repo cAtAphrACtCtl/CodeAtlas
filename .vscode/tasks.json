@@ -46,6 +46,42 @@
       ]
     },
     {
+      "label": "codeatlas: debug mcp",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "--inspect-brk=9230",
+        "--import",
+        "tsx",
+        "./packages/mcp-server/src/main.ts"
+      ],
+      "options": {
+        "env": {
+          "CODEATLAS_CONFIG": "${workspaceFolder}/config/codeatlas.dev.json"
+        }
+      },
+      "isBackground": true,
+      "group": "build",
+      "problemMatcher": [
+        {
+          "owner": "custom",
+          "fileLocation": [
+            "relative",
+            "${workspaceFolder}"
+          ],
+          "pattern": {
+            "regexp": "^(.*)$",
+            "message": 1
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": ".*",
+            "endsPattern": "^Debugger listening on ws://.*$"
+          }
+        }
+      ]
+    },
+    {
       "label": "codeatlas: watch extension types",
       "type": "shell",
       "command": "npm",
@@ -108,6 +144,11 @@
         "run",
         "mcp:watch"
       ],
+      "options": {
+        "env": {
+          "CODEATLAS_CONFIG": "${workspaceFolder}/config/codeatlas.dev.json"
+        }
+      },
       "isBackground": true,
       "group": "build",
       "problemMatcher": [
@@ -124,7 +165,7 @@
           "background": {
             "activeOnStart": true,
             "beginsPattern": ".*",
-            "endsPattern": "^CodeAtlas MCP server ready\\.$"
+            "endsPattern": "^Debugger listening on ws://.*$"
           }
         }
       ]

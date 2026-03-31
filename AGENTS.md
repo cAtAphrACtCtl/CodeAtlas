@@ -65,7 +65,7 @@ Operational workflows, command catalogs, and debug procedures live in `docs/agen
 ## Agent Verification Workflow
 
 - Prefer `npm run mcp:agent` when you need to prove a real MCP client request hit the local server
-- Inspect `data/debug/codeatlas.agent.log` for `codeatlas:mcp` and `codeatlas:search-service` lines after the client call
+- Inspect the configured JSONL log file, typically `data/debug/codeatlas.log.jsonl`, for `"scope":"mcp"`, `"event":"mcp.request.start"`, and `"scope":"search-service"` entries after the client call
 - Use the broader command catalog and debug details in `docs/agent-operations.md`
 
 ## TypeScript Style

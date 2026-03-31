@@ -1,9 +1,9 @@
-import { execFile } from "node:child_process";
+﻿import { execFile } from "node:child_process";
 import { mkdir, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { debugLog, toErrorDetails } from "../common/debug.js";
+import { toErrorDetails } from "../common/debug.js";
 import type { ZoektLexicalBackendConfig } from "../configuration/config.js";
 import {
 	getRepoBuildDir,
@@ -11,11 +11,12 @@ import {
 } from "../indexer/repo-artifact-path.js";
 import type { RepositoryIndexStatus } from "../metadata/metadata-store.js";
 import type { RepositoryRecord } from "../registry/repository-registry.js";
-import type {
-	BackendSearchHit,
-	BackendSearchRequest,
-	LexicalSearchBackend,
+import {
+	type BackendSearchHit,
+	type BackendSearchRequest,
+	type LexicalSearchBackend,
 } from "./lexical-search-backend.js";
+import { getLogger, type Logger } from "../logging/logger.js";
 
 type ZoektExecOptions = {
 	windowsHide: boolean;
@@ -69,12 +70,14 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 	readonly kind = "zoekt";
 	private zoektAvailability?: ZoektAvailability;
 	private readonly runtime: ZoektRuntimeOptions;
+	private readonly logger: Logger | undefined;
 
 	constructor(
 		private readonly backendConfig: ZoektLexicalBackendConfig,
 		private readonly bootstrapBackend?: LexicalSearchBackend,
 		runtime?: Partial<ZoektRuntimeOptions>,
 	) {
+		this.logger = getLogger();
 		this.runtime = {
 			...defaultZoektRuntime,
 			...runtime,
@@ -87,6 +90,10 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				"Zoekt bootstrap fallback is enabled but no bootstrap backend was provided",
 			);
 		}
+	}
+
+	private logDebug(message: string, details?: Record<string, unknown>): void {
+		this.logger?.debug("zoekt", message, { details });
 	}
 
 	async prepareRepository(
@@ -105,9 +112,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 
 		const availability = await this.getZoektAvailability();
 		if (!availability.available) {
-			debugLog(
-				"zoekt",
-				"prepareRepository using fallback because Zoekt is unavailable",
+			this.logDebug("prepareRepository using fallback because Zoekt is unavailable",
 				{
 					repo: repository.name,
 					detail: availability.detail,
@@ -126,7 +131,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				repository.name,
 				repository.rootPath,
 			);
-			debugLog("zoekt", "starting zoekt prepareRepository", {
+			this.logDebug("starting zoekt prepareRepository", {
 				repo: repository.name,
 				executable: this.backendConfig.zoektIndexExecutable,
 				buildDir,
@@ -152,7 +157,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				detail: `Lexical index available via Zoekt at ${buildDir}`,
 			};
 
-			debugLog("zoekt", "completed zoekt prepareRepository", {
+			this.logDebug("completed zoekt prepareRepository", {
 				repo: repository.name,
 				buildDir,
 				state: status.state,
@@ -160,7 +165,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 
 			return status;
 		} catch (error) {
-			debugLog("zoekt", "zoekt prepareRepository failed", {
+			this.logDebug("zoekt prepareRepository failed", {
 				repo: repository.name,
 				...toErrorDetails(error),
 			});
@@ -179,9 +184,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 	): Promise<BackendSearchHit[]> {
 		const availability = await this.getZoektAvailability();
 		if (!availability.available) {
-			debugLog(
-				"zoekt",
-				"searchRepository using fallback because Zoekt is unavailable",
+			this.logDebug("searchRepository using fallback because Zoekt is unavailable",
 				{
 					repo: repository.name,
 					query: request.query,
@@ -197,7 +200,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				repository.name,
 				repository.rootPath,
 			);
-			debugLog("zoekt", "starting zoekt searchRepository", {
+			this.logDebug("starting zoekt searchRepository", {
 				repo: repository.name,
 				executable: this.backendConfig.zoektSearchExecutable,
 				indexDir,
@@ -215,14 +218,14 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 			);
 
 			const hits = this.parseZoektOutput(stdout, request.limit);
-			debugLog("zoekt", "completed zoekt searchRepository", {
+			this.logDebug("completed zoekt searchRepository", {
 				repo: repository.name,
 				query: request.query,
 				hitCount: hits.length,
 			});
 			return hits;
 		} catch (error) {
-			debugLog("zoekt", "zoekt searchRepository failed", {
+			this.logDebug("zoekt searchRepository failed", {
 				repo: repository.name,
 				...toErrorDetails(error),
 			});
@@ -244,7 +247,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 		reason?: RepositoryIndexStatus["reason"];
 		detail?: string;
 	}> {
-		debugLog("zoekt", "verifying zoekt repository readiness", {
+		this.logDebug("verifying zoekt repository readiness", {
 			repo: repository.name,
 			existingBackend: existingStatus?.backend,
 			existingConfiguredBackend: existingStatus?.configuredBackend,
@@ -281,9 +284,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 
 		const availability = await this.getZoektAvailability();
 		if (!availability.available) {
-			debugLog(
-				"zoekt",
-				"repository readiness failed because Zoekt is unavailable",
+			this.logDebug("repository readiness failed because Zoekt is unavailable",
 				{
 					repo: repository.name,
 					detail: availability.detail,
@@ -328,13 +329,13 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				};
 			}
 
-			debugLog("zoekt", "repository readiness verified", {
+			this.logDebug("repository readiness verified", {
 				repo: repository.name,
 				indexDir,
 			});
 			return { ready: true };
 		} catch (error) {
-			debugLog("zoekt", "repository readiness inspection failed", {
+			this.logDebug("repository readiness inspection failed", {
 				repo: repository.name,
 				indexDir,
 				...toErrorDetails(error),
@@ -364,7 +365,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 		noFallbackAction: () => T | Promise<T>,
 	): Promise<T> {
 		if (this.backendConfig.allowBootstrapFallback && this.bootstrapBackend) {
-			debugLog("zoekt", "executing bootstrap fallback", {
+			this.logDebug("executing bootstrap fallback", {
 				detail,
 				fallbackBackend: this.bootstrapBackend.kind,
 			});
@@ -439,7 +440,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 			}
 		}
 
-		debugLog("zoekt", "parsed zoekt output", {
+		this.logDebug("parsed zoekt output", {
 			lineCount: lines.length,
 			hitCount: hits.length,
 			limit,
@@ -462,14 +463,12 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 					windowsHide: true,
 				},
 			);
-			debugLog("zoekt", "zoekt index executable available", {
+			this.logDebug("zoekt index executable available", {
 				executable: this.backendConfig.zoektIndexExecutable,
 				timeoutMs: this.runtime.availabilityTimeoutMs,
 			});
 		} catch (error) {
-			debugLog(
-				"zoekt",
-				"zoekt availability check failed for index executable",
+			this.logDebug("zoekt availability check failed for index executable",
 				{
 					executable: this.backendConfig.zoektIndexExecutable,
 					timeoutMs: this.runtime.availabilityTimeoutMs,
@@ -493,14 +492,12 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 					windowsHide: true,
 				},
 			);
-			debugLog("zoekt", "zoekt search executable available", {
+			this.logDebug("zoekt search executable available", {
 				executable: this.backendConfig.zoektSearchExecutable,
 				timeoutMs: this.runtime.availabilityTimeoutMs,
 			});
 		} catch (error) {
-			debugLog(
-				"zoekt",
-				"zoekt availability check failed for search executable",
+			this.logDebug("zoekt availability check failed for search executable",
 				{
 					executable: this.backendConfig.zoektSearchExecutable,
 					timeoutMs: this.runtime.availabilityTimeoutMs,
@@ -519,7 +516,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 			available: true,
 			detail: "Zoekt executables available",
 		};
-		debugLog("zoekt", "Zoekt executables verified", {
+		this.logDebug("Zoekt executables verified", {
 			indexExecutable: this.backendConfig.zoektIndexExecutable,
 			searchExecutable: this.backendConfig.zoektSearchExecutable,
 		});

@@ -66,7 +66,8 @@ Delivered so far:
 - migration script for moving from the old shared flat Zoekt index layout to per-repository directories
 - aligned ripgrep and naive fallback lexical boundary behavior for skipped directories and `maxBytesPerFile` handling
 - additive MCP-facing index diagnostics for degraded or misconfigured environments, with human-readable remediation guidance
-- broader debug tracing across runtime, MCP handlers, indexing, backend selection, symbol extraction, registry, metadata, and source reads via `CODEATLAS_DEBUG`
+- structured logging across runtime, MCP handlers, indexing, backend selection, symbol extraction, registry, metadata, and source reads through a shared logger, JSONL file sink, and request-scoped context propagation
+- backward-compatible mapping from legacy `debug` config to the top-level `logging` configuration
 - repeatable real-MCP refresh evaluation tooling for initial indexing time, repeated refresh time, query latency, and synthetic refresh-after-update validation
 
 Remaining work:

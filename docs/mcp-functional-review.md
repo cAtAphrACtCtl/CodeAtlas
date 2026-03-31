@@ -70,28 +70,28 @@ Important MCP client behavior note:
 - many failures come back as a successful protocol response with `isError: true`
 - your functional review script should assert on `result.isError` and the returned text payload, not only on promise rejection
 
-### 4. Add opt-in stderr tracing instead of permanent noisy logs
+### 4. Use opt-in structured logging instead of permanent noisy logs
 
-When a runtime issue is unclear, add an opt-in debug path instead of unconditional logging.
+When a runtime issue is unclear, use debug-level structured logging rather than adding unconditional prints.
 
 Current pattern:
 
-- environment variable: `CODEATLAS_DEBUG`
-- shared helper: `packages/core/src/common/debug.ts`
-- current scope: `symbol-search`
+- configure logging through the top-level `logging` block
+- for the reusable review scripts, use `CODEATLAS_LOG_LEVEL=debug` to raise the temporary config from `info` to `debug`
+- inspect the JSONL `scope` field to focus on the component you care about
 
 Example:
 
 ```bash
-CODEATLAS_DEBUG=symbol-search node "scripts/mcp-functional-review.mjs"
+CODEATLAS_LOG_LEVEL=debug node "scripts/mcp-functional-review.mjs"
 ```
 
 Guidelines:
 
-- log to stderr, not stdout
 - keep MCP tool payloads unchanged
-- prefer summary counters and small samples over one-log-per-item output
-- make the scope string granular enough to turn on only the component you need
+- prefer structured summary counters and small samples over one-log-per-item output
+- use `scope` and `event` fields in the JSONL output to isolate the relevant component
+- keep `includeErrorStreamTails` enabled when backend process stderr and stdout tails matter for diagnosis
 - for lexical review, verify which backend was actually used instead of assuming the configured backend succeeded
 
 ### 5. Patch the product behavior, then add regression coverage
@@ -138,10 +138,10 @@ Run the full reusable review:
 npm run mcp:functional-review
 ```
 
-Run with symbol search tracing:
+Run with debug-level structured logging:
 
 ```bash
-CODEATLAS_DEBUG=symbol-search npm run mcp:functional-review
+CODEATLAS_LOG_LEVEL=debug npm run mcp:functional-review
 ```
 
 Run the lexical boundary comparison:

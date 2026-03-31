@@ -47,30 +47,42 @@ Tests use the Node test runner via `tsx`, not Vitest or Jest. Always clean up te
 
 ## Debugging
 
-Debug logging can be enabled via configuration file or environment variable.
+CodeAtlas now uses structured logging configured through the top-level `logging` block.
 
 ### Configuration File
 
-Add a `debug` section to your `codeatlas.json` config:
+Add a `logging` section to your `codeatlas.json` config:
 
 ```json
 {
-  "debug": {
-    "scopes": ["runtime", "mcp", "zoekt"],
-    "trace": true
+  "logging": {
+    "enabled": true,
+    "level": "debug",
+    "format": "jsonl",
+    "file": {
+      "enabled": true,
+      "path": "./data/debug/codeatlas.log.jsonl"
+    },
+    "includeErrorStreamTails": true
   }
 }
 ```
 
-### Environment Variable
+Default behavior:
 
-Set `CODEATLAS_DEBUG` with comma-separated scopes:
+- logs are written as JSONL
+- the default file path is `data/debug/codeatlas.log.jsonl`
+- `logging.level=debug` increases structured log verbosity in the configured file sink
+- `logging.includeErrorStreamTails=true` includes stderr and stdout tails in structured error objects
 
-```bash
-CODEATLAS_DEBUG=runtime,mcp,zoekt,trace npm start
-```
+### Legacy Compatibility
 
-Environment variables are merged with config settings and take precedence.
+The older `debug` config is still accepted, but it is now only a compatibility bridge:
+
+- non-empty `debug.scopes` implies `logging.level=debug`
+- `debug.trace` maps to `logging.includeErrorStreamTails`
+- legacy debug environment flags can still affect verbose error-tail capture
+- do not rely on legacy environment-based log-file redirection; file output is configured through `logging.file.path`
 
 ### Agent Startup Workflow
 
@@ -80,13 +92,13 @@ When you need a local MCP server specifically for agent-call verification, start
 npm run mcp:agent
 ```
 
-This script uses the Windows-native config, enables `runtime,mcp,search-service,ripgrep,zoekt,trace`, and writes to `data/debug/codeatlas.agent.log`.
+That script now defaults to `config/codeatlas.dev.json`, so it starts with debug-level structured logging enabled. The actual structured log file still comes from the config file's `logging.file.path`, unless you override it through the script parameters.
 
 Recommended verification loop:
 
 1. Run `npm run mcp:agent`
 2. Use a real MCP client to call `register_repo`, `find_symbol`, or `code_search`
-3. Inspect `data/debug/codeatlas.agent.log` for `codeatlas:mcp` and `codeatlas:search-service` lines
+3. Inspect the configured JSONL log file for `"scope":"mcp"`, `"event":"mcp.request.start"`, and `"scope":"search-service"`
 
 ### Minimal Smoke Workflow
 
@@ -95,24 +107,26 @@ Use this when you want a smallest-possible proof that a real MCP client request 
 1. Run a real MCP stdio client that spawns the local server, registers the repository, and performs one symbol lookup:
 
 ```powershell
-node --input-type=module -e "import { Client } from '@modelcontextprotocol/sdk/client/index.js'; import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'; const transport = new StdioClientTransport({ command: 'node', args: ['--import','tsx','./packages/mcp-server/src/main.ts'], cwd: process.cwd(), env: { ...process.env, CODEATLAS_CONFIG: 'C:/git/GitHub/LukeLu/CodeAtlas/config/codeatlas.windows.example.json', CODEATLAS_DEBUG: 'runtime,mcp,search-service,ripgrep,zoekt,trace', CODEATLAS_LOG_FILE: 'C:/git/GitHub/LukeLu/CodeAtlas/data/debug/codeatlas.agent.log' } }); const client = new Client({ name: 'manual-smoke-client', version: '1.0.0' }, { capabilities: {} }); await client.connect(transport); await client.callTool({ name: 'register_repo', arguments: { name: 'CodeAtlas', root_path: 'C:/git/GitHub/LukeLu/CodeAtlas', branch: 'main' } }); await client.callTool({ name: 'find_symbol', arguments: { query: 'SearchService', repos: ['CodeAtlas'], kinds: ['class'], exact: true, limit: 5 } }); await transport.close();"
+node --input-type=module -e "import { Client } from '@modelcontextprotocol/sdk/client/index.js'; import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'; const transport = new StdioClientTransport({ command: 'node', args: ['--import','tsx','./packages/mcp-server/src/main.ts'], cwd: process.cwd(), env: { ...process.env, CODEATLAS_CONFIG: 'C:/git/GitHub/LukeLu/CodeAtlas/config/codeatlas.dev.json' } }); const client = new Client({ name: 'manual-smoke-client', version: '1.0.0' }, { capabilities: {} }); await client.connect(transport); await client.callTool({ name: 'register_repo', arguments: { name: 'CodeAtlas', root_path: 'C:/git/GitHub/LukeLu/CodeAtlas', branch: 'main' } }); await client.callTool({ name: 'find_symbol', arguments: { query: 'SearchService', repos: ['CodeAtlas'], kinds: ['class'], exact: true, limit: 5 } }); await transport.close();"
 ```
 
 2. Inspect the dedicated log file:
 
 ```powershell
-Get-Content -Path .\data\debug\codeatlas.agent.log -Tail 30
+Get-Content -Path .\data\debug\codeatlas.log.jsonl -Tail 30
 ```
 
 Expected signal:
 
-- `codeatlas:runtime` lines confirm the server started
-- `codeatlas:mcp` lines confirm the MCP handlers were invoked
-- `codeatlas:search-service` lines confirm the request reached the retrieval layer
+- `"scope":"runtime"` confirms the server started
+- `"scope":"mcp"` plus `"event":"mcp.request.start"` confirms the MCP handlers were invoked
+- `"scope":"search-service"` confirms the request reached the retrieval layer
 
 If you need to keep a separate local server process running for repeated inspection, use `npm run mcp:agent` instead. That workflow is separate from the stdio smoke client above; the inline client command launches its own server process.
 
-### Available Scopes
+### Common Log Scopes
+
+These are the scope names emitted by the structured logger and commonly seen in JSONL output:
 
 - `runtime`: Configuration loading and service initialization
 - `mcp`: MCP handler invocations and responses
@@ -126,8 +140,8 @@ If you need to keep a separate local server process running for repeated inspect
 - `source-reader`: Source file reading operations
 - `registry`: Repository registry operations
 - `metadata`: Index metadata operations
-- `trace`: Include verbose error streams (stderr/stdout tails)
-- `*`: Enable all scopes
+
+Use `logging.level` to control verbosity. Scope names are part of the structured event payload; they are no longer independently toggled by a dedicated scope filter in the main logging path.
 
 ## TypeScript Conventions
 

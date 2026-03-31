@@ -251,6 +251,8 @@ async function main() {
   const registryPath = path.join(tempRoot, "repositories.local.json");
   const metadataPath = path.join(tempRoot, "index-status.local.json");
   const indexRoot = path.join(tempRoot, "indexes");
+  const logPath = path.join(tempRoot, "codeatlas-refresh-eval.log.jsonl");
+  const logLevel = process.env.CODEATLAS_LOG_LEVEL ?? "info";
   const lexicalBackend = await resolvePreferredLexicalBackend(workspaceRoot);
 
   try {
@@ -271,6 +273,16 @@ async function main() {
             serverName: "codeatlas-refresh-eval",
             serverVersion: "0.1.0",
           },
+          logging: {
+            enabled: true,
+            level: logLevel,
+            format: "jsonl",
+            file: {
+              enabled: true,
+              path: logPath,
+            },
+            includeErrorStreamTails: true,
+          },
         },
         null,
         2,
@@ -284,7 +296,6 @@ async function main() {
       cwd: workspaceRoot,
       env: {
         CODEATLAS_CONFIG: configPath,
-        ...(process.env.CODEATLAS_DEBUG ? { CODEATLAS_DEBUG: process.env.CODEATLAS_DEBUG } : {}),
       },
       stderr: "pipe",
     });
@@ -409,6 +420,10 @@ async function main() {
               : validationMode === "zoekt-fallback"
                 ? "Configured backend was Zoekt, but this run used a fallback backend. The timing data is still useful, but it does not fully prove Zoekt refresh semantics."
                 : "This run used the live ripgrep path, so query timings are valid for fallback mode but not for indexed Zoekt semantics.",
+        },
+        logging: {
+          level: logLevel,
+          path: logPath,
         },
         stderr: stderrChunks.join("") || null,
       };
