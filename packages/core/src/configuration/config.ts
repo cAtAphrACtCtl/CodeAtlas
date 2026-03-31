@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { readJsonFile } from "../common/json-file.js";
+import type { LoggingConfig } from "../logging/types.js";
 
 export interface RipgrepLexicalBackendConfig {
 	kind: "ripgrep";
@@ -50,7 +51,9 @@ export interface CodeAtlasConfig {
 		serverName: string;
 		serverVersion: string;
 	};
+	/** @deprecated Use `logging` instead. Retained for backward compatibility. */
 	debug: DebugConfig;
+	logging: LoggingConfig;
 }
 
 interface PartialRipgrepLexicalBackendConfig {
@@ -72,6 +75,14 @@ type PartialLexicalBackendConfig =
 	| PartialRipgrepLexicalBackendConfig
 	| PartialZoektLexicalBackendConfig;
 
+interface PartialLoggingConfig {
+	enabled?: boolean;
+	level?: LoggingConfig["level"];
+	format?: LoggingConfig["format"];
+	file?: Partial<LoggingConfig["file"]>;
+	includeErrorStreamTails?: boolean;
+}
+
 interface PartialCodeAtlasConfig {
 	registryPath?: string;
 	metadataPath?: string;
@@ -80,6 +91,7 @@ interface PartialCodeAtlasConfig {
 	search?: Partial<CodeAtlasConfig["search"]>;
 	mcp?: Partial<CodeAtlasConfig["mcp"]>;
 	debug?: Partial<DebugConfig>;
+	logging?: PartialLoggingConfig;
 }
 
 function resolvePath(baseDir: string, filePath: string): string {
@@ -193,6 +205,20 @@ export function defaultConfig(baseDir = process.cwd()): CodeAtlasConfig {
 			scopes: [],
 			trace: false,
 		},
+		logging: defaultLoggingConfig(baseDir),
+	};
+}
+
+function defaultLoggingConfig(baseDir: string): LoggingConfig {
+	return {
+		enabled: true,
+		level: "info",
+		format: "jsonl",
+		file: {
+			enabled: true,
+			path: path.resolve(baseDir, "data/debug/codeatlas.log.jsonl"),
+		},
+		includeErrorStreamTails: false,
 	};
 }
 
@@ -244,5 +270,37 @@ export async function loadConfig(
 			...defaults.debug,
 			...userConfig.debug,
 		},
+		logging: resolveLoggingConfig(configDir, defaults.logging, userConfig.logging, userConfig.debug),
+	};
+}
+
+function resolveLoggingConfig(
+	baseDir: string,
+	defaults: LoggingConfig,
+	userLogging?: PartialLoggingConfig,
+	userDebug?: Partial<DebugConfig>,
+): LoggingConfig {
+	// Backward compatibility: map debug.trace → logging.includeErrorStreamTails
+	const includeErrorStreamTails =
+		userLogging?.includeErrorStreamTails ??
+		(userDebug?.trace !== undefined ? userDebug.trace : defaults.includeErrorStreamTails);
+
+	// Backward compatibility: if debug.scopes includes "*" or any scope, treat as debug level
+	const inferredLevel =
+		userDebug?.scopes && userDebug.scopes.length > 0 ? "debug" as const : undefined;
+
+	const filePath = userLogging?.file?.path
+		? resolvePath(baseDir, userLogging.file.path)
+		: defaults.file.path;
+
+	return {
+		enabled: userLogging?.enabled ?? defaults.enabled,
+		level: userLogging?.level ?? inferredLevel ?? defaults.level,
+		format: userLogging?.format ?? defaults.format,
+		file: {
+			enabled: userLogging?.file?.enabled ?? defaults.file.enabled,
+			path: filePath,
+		},
+		includeErrorStreamTails,
 	};
 }

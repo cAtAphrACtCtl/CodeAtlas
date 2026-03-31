@@ -191,11 +191,34 @@ export function toErrorDetails(error: unknown): Record<string, unknown> {
 	};
 }
 
+/**
+ * Bridge callback type for forwarding debugLog events to the structured logger.
+ * Set by the runtime after the Logger is initialized.
+ */
+type DebugLogBridge = (
+	scope: string,
+	message: string,
+	details?: Record<string, unknown>,
+) => void;
+
+let debugLogBridge: DebugLogBridge | undefined;
+
+/**
+ * Register the structured logger bridge.
+ * Called once during runtime init to forward debugLog → Logger.
+ */
+export function setDebugLogBridge(bridge: DebugLogBridge): void {
+	debugLogBridge = bridge;
+}
+
 export function debugLog(
 	scope: string,
 	message: string,
 	details?: Record<string, unknown>,
 ): void {
+	// Forward to structured logger bridge when available
+	debugLogBridge?.(scope, message, details);
+
 	if (!isEnabled(scope)) {
 		return;
 	}

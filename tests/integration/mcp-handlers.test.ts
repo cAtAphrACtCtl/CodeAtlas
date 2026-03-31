@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { IndexCoordinator } from "../../packages/core/src/indexer/index-coordinator.js";
+import { Logger } from "../../packages/core/src/logging/logger.js";
 import { FileMetadataStore } from "../../packages/core/src/metadata/file-metadata-store.js";
 import { FileSystemSourceReader } from "../../packages/core/src/reader/filesystem-source-reader.js";
 import { FileRepositoryRegistry } from "../../packages/core/src/registry/file-repository-registry.js";
@@ -41,6 +42,16 @@ function createTestConfig(
 		debug: {
 			scopes: [],
 			trace: false,
+		},
+		logging: {
+			enabled: false,
+			level: "info" as const,
+			format: "jsonl" as const,
+			file: {
+				enabled: false,
+				path: path.join(tempRoot, "codeatlas.log.jsonl"),
+			},
+			includeErrorStreamTails: false,
 		},
 	};
 }
@@ -116,6 +127,7 @@ test("MCP handlers expose phase 1 lexical search and source reading", async (t) 
 		indexCoordinator,
 		searchService,
 		sourceReader,
+		logger: new Logger({ level: "error", enabled: false }),
 	});
 
 	const searchResponse = await handlers.codeSearch({
@@ -239,6 +251,7 @@ test("MCP handlers reject read_source requests when start_line exceeds file leng
 		indexCoordinator,
 		searchService,
 		sourceReader,
+		logger: new Logger({ level: "error", enabled: false }),
 	});
 
 	await assert.rejects(
@@ -283,6 +296,16 @@ test("MCP handlers attach friendly diagnostics when configured Zoekt is unavaila
 			debug: {
 				scopes: [],
 				trace: false,
+			},
+			logging: {
+				enabled: false,
+				level: "info" as const,
+				format: "jsonl" as const,
+				file: {
+					enabled: false,
+					path: "C:/tmp/codeatlas.log.jsonl",
+				},
+				includeErrorStreamTails: false,
 			},
 		},
 		registry: {
@@ -374,6 +397,7 @@ test("MCP handlers attach friendly diagnostics when configured Zoekt is unavaila
 				throw new Error("not used");
 			},
 		},
+		logger: new Logger({ level: "error", enabled: false }),
 	});
 
 	const statusResponse = await handlers.getIndexStatus({ repo: "sample" });

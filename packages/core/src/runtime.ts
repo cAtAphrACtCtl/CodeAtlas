@@ -3,6 +3,9 @@ import { type CodeAtlasConfig, loadConfig } from "./configuration/config.js";
 import { ConfigurationService } from "./configuration/configuration-service.js";
 import { RepositoryDiscoveryService } from "./discovery/repository-discovery.js";
 import { IndexCoordinator } from "./indexer/index-coordinator.js";
+import { Logger, setGlobalLogger } from "./logging/logger.js";
+import { PinoFileSink } from "./logging/pino-file-sink.js";
+import { StderrSink } from "./logging/stderr-sink.js";
 import { FileMetadataStore } from "./metadata/file-metadata-store.js";
 import { FileSystemSourceReader } from "./reader/filesystem-source-reader.js";
 import { FileRepositoryRegistry } from "./registry/file-repository-registry.js";
@@ -20,6 +23,7 @@ export interface CreateCodeAtlasServicesOptions {
 
 export interface CodeAtlasServices {
 	config: CodeAtlasConfig;
+	logger: Logger;
 	configurationService: ConfigurationService;
 	discoveryService: RepositoryDiscoveryService;
 	registry: FileRepositoryRegistry;
@@ -39,6 +43,33 @@ export async function createCodeAtlasServices(
 	const baseDir = options.baseDir ?? process.cwd();
 	const config = await loadConfig(options.configFilePath, baseDir);
 	initializeDebug(config.debug);
+
+	// Initialize structured logger
+	const logger = new Logger({
+		level: config.logging.level,
+		enabled: config.logging.enabled,
+	});
+	if (config.logging.file.enabled) {
+		logger.addSink(new PinoFileSink(config.logging.file.path, "debug"));
+	}
+	if (config.logging.level === "debug") {
+		logger.addSink(new StderrSink());
+	}
+	setGlobalLogger(logger);
+
+	logger.info("runtime", "loaded configuration", {
+		details: {
+			baseDir,
+			configFilePath: options.configFilePath ?? process.env.CODEATLAS_CONFIG,
+			lexicalBackend: config.lexicalBackend.kind,
+			registryPath: config.registryPath,
+			metadataPath: config.metadataPath,
+			indexRoot: config.indexRoot,
+			loggingLevel: config.logging.level,
+			loggingFilePath: config.logging.file.path,
+		},
+	});
+
 	debugLog("runtime", "loaded configuration", {
 		baseDir,
 		configFilePath: options.configFilePath ?? process.env.CODEATLAS_CONFIG,
@@ -80,8 +111,17 @@ export async function createCodeAtlasServices(
 		maxBytesPerFile: config.search.maxBytesPerFile,
 	});
 
+	logger.info("runtime", "initialized runtime services", {
+		backend: lexicalBackend.kind,
+		details: {
+			symbolIndexRoot: config.indexRoot,
+			maxBytesPerFile: config.search.maxBytesPerFile,
+		},
+	});
+
 	return {
 		config,
+		logger,
 		configurationService,
 		discoveryService,
 		registry,

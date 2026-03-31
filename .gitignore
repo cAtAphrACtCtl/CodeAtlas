@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .tools/
+data/
 
 # Packaged extension artifacts
 *.vsix

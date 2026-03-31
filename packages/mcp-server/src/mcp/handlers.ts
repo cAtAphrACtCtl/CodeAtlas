@@ -7,6 +7,8 @@ import type {
 } from "../../../core/src/contracts/search.js";
 import { attachIndexStatusDiagnostics } from "../../../core/src/diagnostics/index-status-diagnostics.js";
 import type { IndexCoordinator } from "../../../core/src/indexer/index-coordinator.js";
+import { runWithRequestContext } from "../../../core/src/logging/context.js";
+import type { Logger } from "../../../core/src/logging/logger.js";
 import type { MetadataStore } from "../../../core/src/metadata/metadata-store.js";
 import type { SourceReader } from "../../../core/src/reader/source-reader.js";
 import type { RepositoryRegistry } from "../../../core/src/registry/repository-registry.js";
@@ -19,6 +21,7 @@ export interface HandlerDependencies {
 	indexCoordinator: IndexCoordinator;
 	searchService: SearchService;
 	sourceReader: SourceReader;
+	logger: Logger;
 }
 
 function toToolResult<T extends object>(payload: T) {
@@ -34,6 +37,8 @@ function toToolResult<T extends object>(payload: T) {
 }
 
 export function createHandlers(dependencies: HandlerDependencies) {
+	const { logger } = dependencies;
+
 	const withDiagnostics = (
 		status: Awaited<ReturnType<IndexCoordinator["refreshRepository"]>>,
 	) => attachIndexStatusDiagnostics(status, dependencies.config.lexicalBackend);
@@ -61,9 +66,48 @@ export function createHandlers(dependencies: HandlerDependencies) {
 		}
 	}
 
+	/**
+	 * Wraps a handler with request context, structured logging, and duration tracking.
+	 * All handlers get a unique requestId, start/complete/error events, and timing.
+	 */
+	async function withRequestContext<T>(
+		toolName: string,
+		context: Record<string, unknown>,
+		action: () => Promise<T>,
+	): Promise<T> {
+		return runWithRequestContext({ toolName }, async () => {
+			const startTime = performance.now();
+			logger.info("mcp", `handling ${toolName}`, {
+				event: "mcp.request.start",
+				toolName,
+				details: context,
+			});
+
+			try {
+				const result = await withFailureLogging(toolName, context, action);
+				const durationMs = Math.round(performance.now() - startTime);
+				logger.info("mcp", `completed ${toolName}`, {
+					event: "mcp.request.complete",
+					toolName,
+					durationMs,
+				});
+				return result;
+			} catch (error) {
+				const durationMs = Math.round(performance.now() - startTime);
+				logger.error("mcp", `${toolName} failed`, {
+					event: "mcp.request.error",
+					toolName,
+					durationMs,
+					error: toErrorDetails(error),
+				});
+				throw error;
+			}
+		});
+	}
+
 	return {
 		listRepos: async () =>
-			withFailureLogging("list_repos", {}, async () => {
+			withRequestContext("list_repos", {}, async () => {
 				debugLog("mcp", "handling list_repos");
 				const repositories = await dependencies.registry.listRepositories();
 				const statuses = await dependencies.indexCoordinator.getStatus();
@@ -85,7 +129,7 @@ export function createHandlers(dependencies: HandlerDependencies) {
 			root_path: string;
 			branch?: string;
 		}) =>
-			withFailureLogging(
+			withRequestContext(
 				"register_repo",
 				{
 					name: request.name,
@@ -125,7 +169,7 @@ export function createHandlers(dependencies: HandlerDependencies) {
 			),
 
 		codeSearch: async (request: SearchRequest) =>
-			withFailureLogging(
+			withRequestContext(
 				"code_search",
 				{
 					query: request.query,
@@ -149,7 +193,7 @@ export function createHandlers(dependencies: HandlerDependencies) {
 			),
 
 		findSymbol: async (request: SymbolSearchRequest) =>
-			withFailureLogging(
+			withRequestContext(
 				"find_symbol",
 				{
 					query: request.query,
@@ -177,7 +221,7 @@ export function createHandlers(dependencies: HandlerDependencies) {
 			),
 
 		semanticSearch: async (request: SearchRequest) =>
-			withFailureLogging(
+			withRequestContext(
 				"semantic_search",
 				{
 					query: request.query,
@@ -201,7 +245,7 @@ export function createHandlers(dependencies: HandlerDependencies) {
 			),
 
 		hybridSearch: async (request: SearchRequest) =>
-			withFailureLogging(
+			withRequestContext(
 				"hybrid_search",
 				{
 					query: request.query,
@@ -225,7 +269,7 @@ export function createHandlers(dependencies: HandlerDependencies) {
 			),
 
 		readSource: async (request: ReadSourceRequest) =>
-			withFailureLogging(
+			withRequestContext(
 				"read_source",
 				{
 					repo: request.repo,
@@ -266,7 +310,7 @@ export function createHandlers(dependencies: HandlerDependencies) {
 			),
 
 		getIndexStatus: async (request: { repo?: string }) =>
-			withFailureLogging(
+			withRequestContext(
 				"get_index_status",
 				{
 					repo: request.repo,
@@ -292,7 +336,7 @@ export function createHandlers(dependencies: HandlerDependencies) {
 			),
 
 		refreshRepo: async (request: { repo: string }) =>
-			withFailureLogging(
+			withRequestContext(
 				"refresh_repo",
 				{
 					repo: request.repo,
