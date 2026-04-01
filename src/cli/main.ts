@@ -17,10 +17,19 @@
  */
 
 import path from "node:path";
+import { createInterface } from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
 
 import type { RepositoryIndexStatus } from "../core/metadata/metadata-store.js";
 import type { RepositoryRecord } from "../core/registry/repository-registry.js";
 import { createCodeAtlasServices } from "../core/runtime.js";
+
+class CliUsageError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "CliUsageError";
+	}
+}
 
 // ─── Arg parsing helpers ────────────────────────────────────────────────────
 
@@ -111,8 +120,7 @@ async function cmdList(): Promise<void> {
 async function cmdRegister(positional: string[], flags: Record<string, string>): Promise<void> {
 	const repoPath = positional[0];
 	if (!repoPath) {
-		console.error("Usage: codeatlas register <path> [--name <name>]");
-		process.exit(1);
+		throw new CliUsageError("Usage: codeatlas register <path> [--name <name>]");
 	}
 	const absPath = path.resolve(repoPath);
 	const name = flags.name ?? path.basename(absPath);
@@ -120,8 +128,9 @@ async function cmdRegister(positional: string[], flags: Record<string, string>):
 	const { registry, indexCoordinator } = await createCodeAtlasServices();
 	const existing = await registry.getRepository(name);
 	if (existing) {
-		console.error(`Repository '${name}' is already registered at ${existing.rootPath}`);
-		process.exit(1);
+		throw new CliUsageError(
+			`Repository '${name}' is already registered at ${existing.rootPath}`,
+		);
 	}
 
 	console.log(`Registering '${name}' at ${absPath}...`);
@@ -134,8 +143,7 @@ async function cmdRegister(positional: string[], flags: Record<string, string>):
 async function cmdRefresh(positional: string[]): Promise<void> {
 	const repoName = positional[0];
 	if (!repoName) {
-		console.error("Usage: codeatlas refresh <repo>");
-		process.exit(1);
+		throw new CliUsageError("Usage: codeatlas refresh <repo>");
 	}
 	const { indexCoordinator } = await createCodeAtlasServices();
 	console.log(`Refreshing '${repoName}'...`);
@@ -150,8 +158,7 @@ async function cmdStatus(positional: string[]): Promise<void> {
 	if (repoName) {
 		const status = await metadataStore.getIndexStatus(repoName);
 		if (!status) {
-			console.error(`No status found for repository '${repoName}'.`);
-			process.exit(1);
+			throw new CliUsageError(`No status found for repository '${repoName}'.`);
 		}
 		printStatus(status);
 	} else {
@@ -164,8 +171,9 @@ async function cmdStatus(positional: string[]): Promise<void> {
 async function cmdSearch(positional: string[], flags: Record<string, string>): Promise<void> {
 	const query = positional[0];
 	if (!query) {
-		console.error("Usage: codeatlas search <query> [--repos r1,r2] [--limit n]");
-		process.exit(1);
+		throw new CliUsageError(
+			"Usage: codeatlas search <query> [--repos r1,r2] [--limit n]",
+		);
 	}
 	const repos = flagList(flags, "repos");
 	const limit = flagInt(flags, "limit") ?? 20;
@@ -187,8 +195,9 @@ async function cmdSearch(positional: string[], flags: Record<string, string>): P
 async function cmdSymbol(positional: string[], flags: Record<string, string>): Promise<void> {
 	const query = positional[0];
 	if (!query) {
-		console.error("Usage: codeatlas symbol <name> [--repos r1,r2] [--kinds k1,k2] [--exact]");
-		process.exit(1);
+		throw new CliUsageError(
+			"Usage: codeatlas symbol <name> [--repos r1,r2] [--kinds k1,k2] [--exact]",
+		);
 	}
 	const repos = flagList(flags, "repos");
 	const kinds = flagList(flags, "kinds") as
@@ -218,20 +227,112 @@ async function cmdRead(positional: string[], flags: Record<string, string>): Pro
 	const endLine = flagInt(flags, "end");
 
 	if (!repo || !filePath || startLine === undefined || endLine === undefined) {
-		console.error("Usage: codeatlas read <repo> <file> --start <n> --end <n>");
-		process.exit(1);
+		throw new CliUsageError("Usage: codeatlas read <repo> <file> --start <n> --end <n>");
 	}
 
 	const { sourceReader, registry } = await createCodeAtlasServices();
 	const record = await registry.getRepository(repo);
 	if (!record) {
-		console.error(`Repository '${repo}' is not registered.`);
-		process.exit(1);
+		throw new CliUsageError(`Repository '${repo}' is not registered.`);
 	}
 
 	const response = await sourceReader.readRange(record, filePath, startLine, endLine);
 	console.log(`// ${response.repo}  ${response.path}:${response.start_line}-${response.end_line}`);
 	console.log(response.content);
+}
+
+async function executeCommand(
+	command: string | undefined,
+	rest: string[],
+	flags: Record<string, string>,
+): Promise<void> {
+	switch (command) {
+		case "list":
+			await cmdList();
+			break;
+		case "register":
+			await cmdRegister(rest, flags);
+			break;
+		case "refresh":
+			await cmdRefresh(rest);
+			break;
+		case "status":
+			await cmdStatus(rest);
+			break;
+		case "search":
+			await cmdSearch(rest, flags);
+			break;
+		case "symbol":
+			await cmdSymbol(rest, flags);
+			break;
+		case "read":
+			await cmdRead(rest, flags);
+			break;
+		case "help":
+		case "--help":
+		case "-h":
+			printHelp();
+			break;
+		default:
+			throw new CliUsageError(`Unknown command: ${command}`);
+	}
+}
+
+function splitCommandLine(line: string): string[] {
+	const tokens = line.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
+	return tokens.map((token) => {
+		if (
+			(token.startsWith('"') && token.endsWith('"')) ||
+			(token.startsWith("'") && token.endsWith("'"))
+		) {
+			return token.slice(1, -1);
+		}
+		return token;
+	});
+}
+
+async function runInteractiveMode(): Promise<void> {
+	const rl = createInterface({ input, output, terminal: true });
+	console.log("CodeAtlas interactive mode. Type 'help' for commands, 'exit' to quit.");
+	try {
+		while (true) {
+			let rawLine: string;
+			try {
+				rawLine = await rl.question("codeatlas> ");
+			} catch {
+				// EOF or closed stdin should end interactive mode gracefully.
+				break;
+			}
+			const line = rawLine.trim();
+			if (line.length === 0) {
+				continue;
+			}
+			if (line === "exit" || line === "quit") {
+				break;
+			}
+			if (line === "clear") {
+				console.clear();
+				continue;
+			}
+
+			const argv = splitCommandLine(line);
+			const { positional, flags } = parseArgs(argv);
+			const command = positional[0];
+			const rest = positional.slice(1);
+
+			try {
+				await executeCommand(command, rest, flags);
+			} catch (error) {
+				if (error instanceof CliUsageError) {
+					console.error(error.message);
+					continue;
+				}
+				throw error;
+			}
+		}
+	} finally {
+		rl.close();
+	}
 }
 
 function printHelp(): void {
@@ -254,40 +355,25 @@ Environment:
 // ─── Entry point ────────────────────────────────────────────────────────────
 
 const argv = process.argv.slice(2);
-const { positional, flags } = parseArgs(argv);
-const command = positional[0];
-const rest = positional.slice(1);
+if (argv.length === 0) {
+	await runInteractiveMode();
+} else {
+	const { positional, flags } = parseArgs(argv);
+	const command = positional[0];
+	const rest = positional.slice(1);
 
-switch (command) {
-	case "list":
-		await cmdList();
-		break;
-	case "register":
-		await cmdRegister(rest, flags);
-		break;
-	case "refresh":
-		await cmdRefresh(rest);
-		break;
-	case "status":
-		await cmdStatus(rest);
-		break;
-	case "search":
-		await cmdSearch(rest, flags);
-		break;
-	case "symbol":
-		await cmdSymbol(rest, flags);
-		break;
-	case "read":
-		await cmdRead(rest, flags);
-		break;
-	case undefined:
-	case "help":
-	case "--help":
-	case "-h":
-		printHelp();
-		break;
-	default:
-		console.error(`Unknown command: ${command}`);
-		printHelp();
-		process.exit(1);
+	if (!command) {
+		await runInteractiveMode();
+	} else {
+		try {
+			await executeCommand(command, rest, flags);
+		} catch (error) {
+			if (error instanceof CliUsageError) {
+				console.error(error.message);
+				printHelp();
+				process.exit(1);
+			}
+			throw error;
+		}
+	}
 }
