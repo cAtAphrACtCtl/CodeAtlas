@@ -45,6 +45,12 @@ Tests use the Node test runner via `tsx`, not Vitest or Jest. Always clean up te
 - Refresh evaluation workflow: `npm run mcp:refresh-eval`
 - Lexical boundary evaluation: `npm run mcp:lexical-boundary-eval`
 
+Functional validation notes:
+
+- `npm run mcp:functional-review` now prefers installed Zoekt binaries under `.tools/zoekt/bin` before falling back to source-build or Linux-specific layouts
+- when Zoekt is installed and usable in the current runtime, the functional review should finish with `LEXICAL_BACKEND zoekt`
+- if you want to exercise the runtime's platform-aware default config selection, leave `CODEATLAS_CONFIG` unset instead of setting it to an empty string
+
 ## Debugging
 
 CodeAtlas now uses structured logging configured through the top-level `logging` block.
@@ -104,10 +110,12 @@ Recommended verification loop:
 
 Use this when you want a smallest-possible proof that a real MCP client request can hit a local CodeAtlas server process.
 
+If you want to verify the platform-aware default config selection, make sure `CODEATLAS_CONFIG` is unset for the child process. Setting it to an empty string exercises the built-in config defaults instead.
+
 1. Run a real MCP stdio client that spawns the local server, registers the repository, and performs one symbol lookup:
 
 ```powershell
-node --input-type=module -e "import { Client } from '@modelcontextprotocol/sdk/client/index.js'; import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'; const transport = new StdioClientTransport({ command: 'node', args: ['--import','tsx','./packages/mcp-server/src/main.ts'], cwd: process.cwd(), env: { ...process.env, CODEATLAS_CONFIG: 'C:/git/GitHub/LukeLu/CodeAtlas/config/codeatlas.dev.json' } }); const client = new Client({ name: 'manual-smoke-client', version: '1.0.0' }, { capabilities: {} }); await client.connect(transport); await client.callTool({ name: 'register_repo', arguments: { name: 'CodeAtlas', root_path: 'C:/git/GitHub/LukeLu/CodeAtlas', branch: 'main' } }); await client.callTool({ name: 'find_symbol', arguments: { query: 'SearchService', repos: ['CodeAtlas'], kinds: ['class'], exact: true, limit: 5 } }); await transport.close();"
+node --input-type=module -e "import { Client } from '@modelcontextprotocol/sdk/client/index.js'; import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'; const env = { ...process.env }; delete env.CODEATLAS_CONFIG; const transport = new StdioClientTransport({ command: 'node', args: ['--import','tsx','./packages/mcp-server/src/main.ts'], cwd: process.cwd(), env }); const client = new Client({ name: 'manual-smoke-client', version: '1.0.0' }, { capabilities: {} }); await client.connect(transport); await client.callTool({ name: 'register_repo', arguments: { name: 'CodeAtlas', root_path: 'C:/git/GitHub/LukeLu/CodeAtlas', branch: 'main' } }); await client.callTool({ name: 'find_symbol', arguments: { query: 'SearchService', repos: ['CodeAtlas'], kinds: ['class'], exact: true, limit: 5 } }); await transport.close();"
 ```
 
 2. Inspect the dedicated log file:

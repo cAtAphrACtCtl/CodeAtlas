@@ -21,11 +21,6 @@ async function getServices() {
 	const workspaceRoot = await getWorkspaceRoot();
 	return createCodeAtlasServices({
 		baseDir: workspaceRoot,
-		configFilePath: path.join(
-			workspaceRoot,
-			"config",
-			"codeatlas.example.json",
-		),
 	});
 }
 
@@ -100,9 +95,7 @@ export function registerCodeAtlasCommands(
 
 		vscode.commands.registerCommand("codeatlas.openConfig", async () => {
 			const services = await getServices();
-			const configPath = services.configurationService.resolveConfigPath(
-				path.join(await getWorkspaceRoot(), "config", "codeatlas.example.json"),
-			);
+			const configPath = services.configurationService.getDefaultConfigPath();
 			const document = await vscode.workspace.openTextDocument(configPath);
 			await vscode.window.showTextDocument(document);
 		}),

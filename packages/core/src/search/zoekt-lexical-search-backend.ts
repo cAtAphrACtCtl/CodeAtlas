@@ -16,6 +16,7 @@ import {
 	type BackendSearchRequest,
 	type LexicalSearchBackend,
 } from "./lexical-search-backend.js";
+import { skippedDirectories } from "./lexical-boundaries.js";
 import { getLogger, type Logger } from "../logging/logger.js";
 
 type ZoektExecOptions = {
@@ -40,6 +41,7 @@ interface ZoektRuntimeOptions {
 	availabilityTimeoutMs: number;
 	indexBuildTimeoutMs: number;
 	searchTimeoutMs: number;
+	maxBytesPerFile: number;
 }
 
 const execFileAsync = promisify(execFile) as unknown as ZoektExec;
@@ -48,12 +50,33 @@ const defaultZoektRuntime: ZoektRuntimeOptions = {
 	availabilityTimeoutMs: 5_000,
 	indexBuildTimeoutMs: 120_000,
 	searchTimeoutMs: 30_000,
+	maxBytesPerFile: 256 * 1024,
 };
 const defaultResultScore = 100;
 const minimumResultScore = 1;
 
 function toPosixPath(filePath: string): string {
 	return filePath.split(path.sep).join("/");
+}
+
+function toRepositoryRelativePath(
+	repositoryRoot: string,
+	rawPath: string,
+): string {
+	if (!path.isAbsolute(rawPath)) {
+		return toPosixPath(rawPath).replace(/^\.\//, "");
+	}
+
+	const relativePath = path.relative(repositoryRoot, rawPath);
+	if (
+		relativePath !== "" &&
+		!relativePath.startsWith("..") &&
+		!path.isAbsolute(relativePath)
+	) {
+		return toPosixPath(relativePath);
+	}
+
+	return toPosixPath(rawPath);
 }
 
 function scoreZoektHit(resultIndex: number): number {
@@ -137,11 +160,21 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				buildDir,
 				rootPath: repository.rootPath,
 				timeoutMs: this.runtime.indexBuildTimeoutMs,
+				maxBytesPerFile: this.runtime.maxBytesPerFile,
+				ignoredDirectories: skippedDirectories,
 			});
 			await mkdir(buildDir, { recursive: true });
 			await this.runtime.execFile(
 				this.backendConfig.zoektIndexExecutable,
-				["-index", buildDir, repository.rootPath],
+				[
+					"-file_limit",
+					String(this.runtime.maxBytesPerFile),
+					"-ignore_dirs",
+					skippedDirectories.join(","),
+					"-index",
+					buildDir,
+					repository.rootPath,
+				],
 				{
 					windowsHide: true,
 					maxBuffer: 16 * 1024 * 1024,
@@ -217,7 +250,11 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				},
 			);
 
-			const hits = this.parseZoektOutput(stdout, request.limit);
+			const hits = this.parseZoektOutput(
+				repository.rootPath,
+				stdout,
+				request.limit,
+			);
 			this.logDebug("completed zoekt searchRepository", {
 				repo: repository.name,
 				query: request.query,
@@ -417,7 +454,11 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 		);
 	}
 
-	private parseZoektOutput(stdout: string, limit: number): BackendSearchHit[] {
+	private parseZoektOutput(
+		repositoryRoot: string,
+		stdout: string,
+		limit: number,
+	): BackendSearchHit[] {
 		const hits: BackendSearchHit[] = [];
 		const lines = stdout.split(/\r?\n/).filter(Boolean);
 
@@ -428,7 +469,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 			}
 
 			hits.push({
-				path: toPosixPath(match[1]),
+				path: toRepositoryRelativePath(repositoryRoot, match[1]),
 				startLine: Number(match[2]),
 				endLine: Number(match[2]),
 				snippet: match[3],

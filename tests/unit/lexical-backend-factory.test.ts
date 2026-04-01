@@ -90,9 +90,15 @@ test("ZoektLexicalSearchBackend uses separate timeouts for availability checks a
 		[
 			{ command: "-help", timeout: 5 },
 			{ command: "-help", timeout: 5 },
-			{ command: "-index", timeout: 50 },
+			{ command: "-file_limit", timeout: 50 },
 		],
 	);
+	assert.deepEqual(calls[2]?.args.slice(0, 4), [
+		"-file_limit",
+		String(256 * 1024),
+		"-ignore_dirs",
+		".git,node_modules,dist,data,.next",
+	]);
 });
 
 test("ZoektLexicalSearchBackend uses a dedicated timeout for search after availability succeeds", async () => {
@@ -142,6 +148,64 @@ test("ZoektLexicalSearchBackend uses a dedicated timeout for search after availa
 
 	assert.equal(hits.length, 1);
 	assert.equal(hits[0]?.path, "src/example.ts");
+	assert.deepEqual(
+		calls.map((call) => ({ command: call.args[0], timeout: call.timeout })),
+		[
+			{ command: "-help", timeout: 7 },
+			{ command: "-help", timeout: 7 },
+			{ command: "-index_dir", timeout: 45 },
+		],
+	);
+});
+
+test("ZoektLexicalSearchBackend normalizes absolute search hit paths to repository-relative paths", async () => {
+	const repositoryRoot = process.cwd();
+	const calls: Array<{ args: string[]; timeout: number | undefined }> = [];
+	const backend = new ZoektLexicalSearchBackend(
+		{
+			kind: "zoekt",
+			zoektIndexExecutable: "zoekt-index",
+			zoektSearchExecutable: "zoekt-search",
+			indexRoot: "C:/indexes/zoekt",
+			allowBootstrapFallback: false,
+			bootstrapFallback: {
+				kind: "ripgrep",
+				executable: "rg",
+				fallbackToNaiveScan: true,
+			},
+		},
+		undefined,
+		{
+			availabilityTimeoutMs: 7,
+			searchTimeoutMs: 45,
+			execFile: async (_file, args, options) => {
+				calls.push({ args, timeout: options.timeout });
+				if (args[0] === "-index_dir") {
+					return {
+						stdout: `${path.join(repositoryRoot, "src", "absolute-example.ts")}:4:buildAtlas()\n`,
+						stderr: "",
+					};
+				}
+
+				return { stdout: "", stderr: "" };
+			},
+		},
+	);
+
+	const hits = await backend.searchRepository(
+		{
+			name: "sample",
+			rootPath: repositoryRoot,
+			registeredAt: new Date().toISOString(),
+		},
+		{
+			query: "buildAtlas",
+			limit: 5,
+		},
+	);
+
+	assert.equal(hits.length, 1);
+	assert.equal(hits[0]?.path, "src/absolute-example.ts");
 	assert.deepEqual(
 		calls.map((call) => ({ command: call.args[0], timeout: call.timeout })),
 		[

@@ -42,6 +42,25 @@ async function exists(filePath) {
 }
 
 async function resolvePreferredLexicalBackend(workspaceRoot) {
+  const windowsInstalledIndex = path.join(workspaceRoot, ".tools", "zoekt", "bin", "zoekt-index.exe");
+  const windowsInstalledSearch = path.join(workspaceRoot, ".tools", "zoekt", "bin", "zoekt.exe");
+  if ((await exists(windowsInstalledIndex)) && (await exists(windowsInstalledSearch))) {
+    return {
+      expectedBackend: "zoekt",
+      config: {
+        kind: "zoekt",
+        zoektIndexExecutable: windowsInstalledIndex,
+        zoektSearchExecutable: windowsInstalledSearch,
+        allowBootstrapFallback: true,
+        bootstrapFallback: {
+          kind: "ripgrep",
+          executable: "rg",
+          fallbackToNaiveScan: true,
+        },
+      },
+    };
+  }
+
   const windowsZoektIndex = path.join(workspaceRoot, ".tools", "zoekt", "source-win-bin", "zoekt-index.exe");
   const windowsZoektSearch = path.join(workspaceRoot, ".tools", "zoekt", "source-win-bin", "zoekt.exe");
   if ((await exists(windowsZoektIndex)) && (await exists(windowsZoektSearch))) {
@@ -51,6 +70,25 @@ async function resolvePreferredLexicalBackend(workspaceRoot) {
         kind: "zoekt",
         zoektIndexExecutable: windowsZoektIndex,
         zoektSearchExecutable: windowsZoektSearch,
+        allowBootstrapFallback: true,
+        bootstrapFallback: {
+          kind: "ripgrep",
+          executable: "rg",
+          fallbackToNaiveScan: true,
+        },
+      },
+    };
+  }
+
+  const linuxInstalledIndex = path.join(workspaceRoot, ".tools", "zoekt", "bin", "zoekt-index");
+  const linuxInstalledSearch = path.join(workspaceRoot, ".tools", "zoekt", "bin", "zoekt");
+  if (process.platform !== "win32" && (await exists(linuxInstalledIndex)) && (await exists(linuxInstalledSearch))) {
+    return {
+      expectedBackend: "zoekt",
+      config: {
+        kind: "zoekt",
+        zoektIndexExecutable: linuxInstalledIndex,
+        zoektSearchExecutable: linuxInstalledSearch,
         allowBootstrapFallback: true,
         bootstrapFallback: {
           kind: "ripgrep",

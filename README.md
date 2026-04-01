@@ -26,6 +26,7 @@ Current components:
 - Repository registry: local JSON-backed registry of repositories
 - Index coordinator: orchestration point for repository-scoped refresh, readiness, and status
 - Lexical backend abstraction: Zoekt is the current primary backend; a ripgrep-backed bootstrap path remains available as a development or troubleshooting fallback
+- Shared lexical boundary rules: Zoekt, ripgrep, and the naive fallback all skip the same generated or dependency directories and honor the configured `maxBytesPerFile` limit during indexing or scanning
 - Symbol extraction pipeline: experimental TypeScript-powered extraction for TS and JS repositories
 - Symbol index store: local JSON-backed symbol metadata for the current experimental `find_symbol` path
 - Symbol search backend: targeted exact, prefix, and substring symbol lookup for the current experimental symbol path
@@ -236,7 +237,7 @@ In VS Code, use the `Run CodeAtlas Extension` launch configuration for extension
 
 ### 6. Optional configuration
 
-By default, CodeAtlas uses internal defaults rooted at the repository directory. You can override them with:
+By default, CodeAtlas loads the platform-specific example config when one is available: `config/codeatlas.windows.example.json` on Windows, `config/codeatlas.wsl.example.json` on WSL or Linux, and otherwise falls back to `config/codeatlas.example.json`. You can override that with:
 
 - `CODEATLAS_CONFIG=./config/codeatlas.example.json`
 

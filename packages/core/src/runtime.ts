@@ -40,7 +40,12 @@ export async function createCodeAtlasServices(
 	options: CreateCodeAtlasServicesOptions = {},
 ): Promise<CodeAtlasServices> {
 	const baseDir = options.baseDir ?? process.cwd();
-	const config = await loadConfig(options.configFilePath, baseDir);
+	const configurationService = new ConfigurationService(baseDir);
+	const resolvedConfigFilePath =
+		options.configFilePath ??
+		process.env.CODEATLAS_CONFIG ??
+		configurationService.getDefaultConfigPath();
+	const config = await loadConfig(resolvedConfigFilePath, baseDir);
 	initializeDebug(config.debug);
 
 	// Initialize structured logger
@@ -56,7 +61,7 @@ export async function createCodeAtlasServices(
 	logger.info("runtime", "loaded configuration", {
 		details: {
 			baseDir,
-			configFilePath: options.configFilePath ?? process.env.CODEATLAS_CONFIG,
+			configFilePath: resolvedConfigFilePath,
 			lexicalBackend: config.lexicalBackend.kind,
 			registryPath: config.registryPath,
 			metadataPath: config.metadataPath,
@@ -65,7 +70,6 @@ export async function createCodeAtlasServices(
 			loggingFilePath: config.logging.file.path,
 		},
 	});
-	const configurationService = new ConfigurationService(baseDir);
 	const discoveryService = new RepositoryDiscoveryService();
 	const registry = new FileRepositoryRegistry(config.registryPath);
 	const metadataStore = new FileMetadataStore(config.metadataPath);

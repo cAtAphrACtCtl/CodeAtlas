@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import {
 	defaultConfig,
 	loadConfig,
 } from "../../packages/core/src/configuration/config.js";
+import { ConfigurationService } from "../../packages/core/src/configuration/configuration-service.js";
 
 test("loadConfig rejects empty executable paths", async (t) => {
 	const tempDir = await mkdtemp(path.join(os.tmpdir(), "codeatlas-config-"));
@@ -103,4 +104,48 @@ test("defaultConfig keeps legacy debug compatibility opt-in", () => {
 	const config = defaultConfig();
 	assert.equal(config.debug.scopes.length, 0);
 	assert.equal(config.debug.trace, false);
+});
+
+test("ConfigurationService prefers the Windows example config on win32", async (t) => {
+	const tempDir = await mkdtemp(path.join(os.tmpdir(), "codeatlas-config-service-"));
+	t.after(async () => {
+		await rm(tempDir, { recursive: true, force: true });
+	});
+
+	const configDir = path.join(tempDir, "config");
+	await mkdir(configDir, { recursive: true });
+	await writeFile(path.join(configDir, "codeatlas.example.json"), "{}", "utf8");
+	await writeFile(
+		path.join(configDir, "codeatlas.windows.example.json"),
+		"{}",
+		"utf8",
+	);
+
+	const service = new ConfigurationService(tempDir, "win32");
+	assert.equal(
+		service.getDefaultConfigPath(),
+		path.join(configDir, "codeatlas.windows.example.json"),
+	);
+});
+
+test("ConfigurationService prefers the WSL or Linux example config on non-Windows runtimes", async (t) => {
+	const tempDir = await mkdtemp(path.join(os.tmpdir(), "codeatlas-config-service-"));
+	t.after(async () => {
+		await rm(tempDir, { recursive: true, force: true });
+	});
+
+	const configDir = path.join(tempDir, "config");
+	await mkdir(configDir, { recursive: true });
+	await writeFile(path.join(configDir, "codeatlas.example.json"), "{}", "utf8");
+	await writeFile(
+		path.join(configDir, "codeatlas.wsl.example.json"),
+		"{}",
+		"utf8",
+	);
+
+	const service = new ConfigurationService(tempDir, "linux");
+	assert.equal(
+		service.getDefaultConfigPath(),
+		path.join(configDir, "codeatlas.wsl.example.json"),
+	);
 });

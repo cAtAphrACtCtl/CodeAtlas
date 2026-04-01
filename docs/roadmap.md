@@ -64,11 +64,12 @@ Delivered so far:
 - per-repository Zoekt index isolation with dedicated subdirectories per repo
 - unified `indexRoot` config derivation so Zoekt index root is derived automatically from the top-level `indexRoot`
 - migration script for moving from the old shared flat Zoekt index layout to per-repository directories
-- aligned ripgrep and naive fallback lexical boundary behavior for skipped directories and `maxBytesPerFile` handling
+- aligned Zoekt, ripgrep, and naive fallback lexical boundary behavior for skipped directories and `maxBytesPerFile` handling
 - additive MCP-facing index diagnostics for degraded or misconfigured environments, with human-readable remediation guidance
 - structured logging across runtime, MCP handlers, indexing, backend selection, symbol extraction, registry, metadata, and source reads through a shared logger, JSONL file sink, and request-scoped context propagation
 - backward-compatible mapping from legacy `debug` config to the top-level `logging` configuration
 - repeatable real-MCP refresh evaluation tooling for initial indexing time, repeated refresh time, query latency, and synthetic refresh-after-update validation
+- repeatable real-MCP functional review tooling that now validates the Zoekt-first path against the installed `.tools/zoekt/bin` layout when those binaries are available
 
 Remaining work:
 

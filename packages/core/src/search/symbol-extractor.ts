@@ -7,6 +7,7 @@ import { toErrorDetails } from "../common/debug.js";
 import type { SymbolKind, SymbolRecord } from "../contracts/search.js";
 import { getLogger, type Logger } from "../logging/logger.js";
 import type { RepositoryRecord } from "../registry/repository-registry.js";
+import { skippedDirectorySet } from "./lexical-boundaries.js";
 
 const supportedExtensions = new Set([
 	".ts",
@@ -17,13 +18,6 @@ const supportedExtensions = new Set([
 	".cts",
 	".mjs",
 	".cjs",
-]);
-const skippedDirectories = new Set([
-	".git",
-	"node_modules",
-	"dist",
-	"data",
-	".next",
 ]);
 
 type ExtractedSymbol = Omit<SymbolRecord, "repo">;
@@ -275,7 +269,7 @@ export class TypeScriptSymbolExtractor {
 			for (const entry of entries) {
 				const fullPath = path.join(currentDirectory, entry.name);
 				if (entry.isDirectory()) {
-					if (!skippedDirectories.has(entry.name)) {
+					if (!skippedDirectorySet.has(entry.name)) {
 						queue.push(fullPath);
 					}
 

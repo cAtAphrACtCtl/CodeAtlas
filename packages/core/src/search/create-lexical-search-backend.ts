@@ -16,6 +16,7 @@ export function createLexicalSearchBackend(
 				config.bootstrapFallback,
 				maxBytesPerFile,
 			),
+			{ maxBytesPerFile },
 		);
 	}
 

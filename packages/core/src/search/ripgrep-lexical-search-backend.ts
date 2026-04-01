@@ -13,15 +13,9 @@ import type {
 	BackendSearchRequest,
 	LexicalSearchBackend,
 } from "./lexical-search-backend.js";
+import { skippedDirectorySet } from "./lexical-boundaries.js";
 
 const execFileAsync = promisify(execFile);
-const skippedDirectories = new Set([
-	".git",
-	"node_modules",
-	"dist",
-	"data",
-	".next",
-]);
 
 interface RipgrepJsonRecord {
 	type: string;
@@ -351,7 +345,7 @@ export class BootstrapRipgrepLexicalSearchBackend
 			const entries = await readdir(currentDirectory, { withFileTypes: true });
 			for (const entry of entries) {
 				if (entry.isDirectory()) {
-					if (!skippedDirectories.has(entry.name)) {
+					if (!skippedDirectorySet.has(entry.name)) {
 						queue.push(path.join(currentDirectory, entry.name));
 					}
 
