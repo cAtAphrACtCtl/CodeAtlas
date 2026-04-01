@@ -1,11 +1,11 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { IndexCoordinator } from "../../packages/core/src/indexer/index-coordinator.js";
-import type { RepositoryRegistry } from "../../packages/core/src/registry/repository-registry.js";
-import type { LexicalSearchBackend } from "../../packages/core/src/search/lexical-search-backend.js";
-import { SearchService } from "../../packages/core/src/search/search-service.js";
-import { SymbolSearchBackend } from "../../packages/core/src/search/symbol-search-backend.js";
+import type { IndexCoordinator } from "../../src/core/indexer/index-coordinator.js";
+import type { RepositoryRegistry } from "../../src/core/registry/repository-registry.js";
+import type { LexicalSearchBackend } from "../../src/core/search/lexical-search-backend.js";
+import { SearchService } from "../../src/core/search/search-service.js";
+import { SymbolSearchBackend } from "../../src/core/search/symbol-search-backend.js";
 
 test("SearchService returns lexical results using the stable result contract", async () => {
 	const repository = {
@@ -622,3 +622,4 @@ test("SearchService lexical search only requires lexical readiness", async () =>
 	assert.equal(response.results.length, 1);
 	assert.equal(response.results[0]?.path, "src/example.ts");
 });
+

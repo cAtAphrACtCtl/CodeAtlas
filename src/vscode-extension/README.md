@@ -1,4 +1,4 @@
-# CodeAtlas VS Code Extension
+﻿# CodeAtlas VS Code Extension
 
 This extension provides the VS Code command surface for the local-first CodeAtlas platform.
 

@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -292,7 +292,7 @@ async function main() {
 
     const transport = new StdioClientTransport({
       command: process.execPath,
-      args: ["--import", "tsx", "./packages/mcp-server/src/main.ts"],
+      args: ["--import", "tsx", "./src/mcp-server/main.ts"],
       cwd: workspaceRoot,
       env: {
         CODEATLAS_CONFIG: configPath,
@@ -442,3 +442,4 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+

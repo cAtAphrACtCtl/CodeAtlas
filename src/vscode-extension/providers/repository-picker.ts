@@ -1,8 +1,8 @@
 import type { QuickPickItem } from "vscode";
 
-import type { RepositoryDiscoveryCandidate } from "../../../core/src/discovery/repository-discovery.js";
-import type { RepositoryIndexStatus } from "../../../core/src/metadata/metadata-store.js";
-import type { RepositoryRecord } from "../../../core/src/registry/repository-registry.js";
+import type { RepositoryDiscoveryCandidate } from "../../core/discovery/repository-discovery.js";
+import type { RepositoryIndexStatus } from "../../core/metadata/metadata-store.js";
+import type { RepositoryRecord } from "../../core/registry/repository-registry.js";
 
 export function toDiscoveryQuickPickItems(
 	candidates: RepositoryDiscoveryCandidate[],

@@ -1,4 +1,4 @@
-# MCP server wrapper that uses the configured structured log file.
+﻿# MCP server wrapper that uses the configured structured log file.
 # Usage: .\scripts\mcp-dev.ps1
 
 function Resolve-CodeAtlasPath {
@@ -19,7 +19,7 @@ function Resolve-CodeAtlasPath {
 }
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$ConfigPath = Join-Path $ProjectRoot "config\codeatlas.dev.json"
+$ConfigPath = Join-Path $ProjectRoot "config\codeatlas.json"
 $Config = Get-Content -Raw -Path $ConfigPath | ConvertFrom-Json -Depth 20
 $LogFile = $null
 
@@ -49,7 +49,9 @@ if ($LogFile) {
 
 Push-Location $ProjectRoot
 try {
-    npx tsx packages/mcp-server/src/main.ts
+    npx tsx src/mcp-server/main.ts
 } finally {
     Pop-Location
 }
+
+

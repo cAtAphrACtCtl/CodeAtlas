@@ -1,12 +1,12 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createLexicalSearchBackend } from "../../packages/core/src/search/create-lexical-search-backend.js";
-import { BootstrapRipgrepLexicalSearchBackend } from "../../packages/core/src/search/ripgrep-lexical-search-backend.js";
-import { ZoektLexicalSearchBackend } from "../../packages/core/src/search/zoekt-lexical-search-backend.js";
+import { createLexicalSearchBackend } from "../../src/core/search/create-lexical-search-backend.js";
+import { BootstrapRipgrepLexicalSearchBackend } from "../../src/core/search/ripgrep-lexical-search-backend.js";
+import { ZoektLexicalSearchBackend } from "../../src/core/search/zoekt-lexical-search-backend.js";
 
 test("createLexicalSearchBackend returns the bootstrap ripgrep backend for ripgrep config", () => {
 	const backend = createLexicalSearchBackend(
@@ -379,3 +379,4 @@ test("ZoektLexicalSearchBackend throws from searchRepository when executables ar
 		/Zoekt index executable not available/,
 	);
 });
+

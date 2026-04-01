@@ -1,5 +1,5 @@
-param(
-	[string]$ConfigPath = "config/codeatlas.dev.json",
+﻿param(
+	[string]$ConfigPath = "config/codeatlas.json",
 	[string]$LogPath = "",
 	[string]$LogLevel = "",
 	[switch]$ClearLog
@@ -114,9 +114,10 @@ Write-Host "Starting CodeAtlas MCP for agent verification"
 	}
 
 try {
-	& node --import tsx (Join-Path $workspaceRoot "packages/mcp-server/src/main.ts")
+	& node --import tsx (Join-Path $workspaceRoot "src/mcp-server/main.ts")
 } finally {
 	if ($temporaryConfigPath -and (Test-Path $temporaryConfigPath)) {
 		Remove-Item $temporaryConfigPath -Force
 	}
 }
+

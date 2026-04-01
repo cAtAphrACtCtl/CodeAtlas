@@ -2,7 +2,7 @@ import path from "node:path";
 
 import * as vscode from "vscode";
 
-import { createCodeAtlasServices } from "../../../core/src/runtime.js";
+import { createCodeAtlasServices } from "../../core/runtime.js";
 import {
 	toDiscoveryQuickPickItems,
 	toRepositoryStatusQuickPickItems,

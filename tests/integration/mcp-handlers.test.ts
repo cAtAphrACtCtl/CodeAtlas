@@ -1,20 +1,20 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { IndexCoordinator } from "../../packages/core/src/indexer/index-coordinator.js";
-import { Logger } from "../../packages/core/src/logging/logger.js";
-import { FileMetadataStore } from "../../packages/core/src/metadata/file-metadata-store.js";
-import { FileSystemSourceReader } from "../../packages/core/src/reader/filesystem-source-reader.js";
-import { FileRepositoryRegistry } from "../../packages/core/src/registry/file-repository-registry.js";
-import { RipgrepLexicalSearchBackend } from "../../packages/core/src/search/ripgrep-lexical-search-backend.js";
-import { SearchService } from "../../packages/core/src/search/search-service.js";
-import { TypeScriptSymbolExtractor } from "../../packages/core/src/search/symbol-extractor.js";
-import { FileSymbolIndexStore } from "../../packages/core/src/search/symbol-index-store.js";
-import { SymbolSearchBackend } from "../../packages/core/src/search/symbol-search-backend.js";
-import { createHandlers } from "../../packages/mcp-server/src/mcp/handlers.js";
+import { IndexCoordinator } from "../../src/core/indexer/index-coordinator.js";
+import { Logger } from "../../src/core/logging/logger.js";
+import { FileMetadataStore } from "../../src/core/metadata/file-metadata-store.js";
+import { FileSystemSourceReader } from "../../src/core/reader/filesystem-source-reader.js";
+import { FileRepositoryRegistry } from "../../src/core/registry/file-repository-registry.js";
+import { RipgrepLexicalSearchBackend } from "../../src/core/search/ripgrep-lexical-search-backend.js";
+import { SearchService } from "../../src/core/search/search-service.js";
+import { TypeScriptSymbolExtractor } from "../../src/core/search/symbol-extractor.js";
+import { FileSymbolIndexStore } from "../../src/core/search/symbol-index-store.js";
+import { SymbolSearchBackend } from "../../src/core/search/symbol-search-backend.js";
+import { createHandlers } from "../../src/mcp-server/mcp/handlers.js";
 
 function createTestConfig(
 	tempRoot: string,
@@ -451,3 +451,4 @@ test("MCP handlers attach friendly diagnostics when configured Zoekt is unavaila
 		/Zoekt-first path|fallback backend|degraded/i,
 	);
 });
+

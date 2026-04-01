@@ -53,11 +53,11 @@
         "--inspect-brk=9230",
         "--import",
         "tsx",
-        "./packages/mcp-server/src/main.ts"
+        "./src/mcp-server/main.ts"
       ],
       "options": {
         "env": {
-          "CODEATLAS_CONFIG": "${workspaceFolder}/config/codeatlas.dev.json"
+          "CODEATLAS_CONFIG": "${workspaceFolder}/config/codeatlas.json"
         }
       },
       "isBackground": true,
@@ -114,7 +114,7 @@
           "owner": "custom",
           "fileLocation": [
             "relative",
-            "${workspaceFolder}/packages/vscode-extension"
+            "${workspaceFolder}/src/vscode-extension"
           ],
           "pattern": [
             {
@@ -146,7 +146,7 @@
       ],
       "options": {
         "env": {
-          "CODEATLAS_CONFIG": "${workspaceFolder}/config/codeatlas.dev.json"
+          "CODEATLAS_CONFIG": "${workspaceFolder}/config/codeatlas.json"
         }
       },
       "isBackground": true,

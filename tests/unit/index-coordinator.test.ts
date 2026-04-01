@@ -1,20 +1,20 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { IndexCoordinator } from "../../packages/core/src/indexer/index-coordinator.js";
-import { getRepoIndexDir } from "../../packages/core/src/indexer/repo-artifact-path.js";
+import { IndexCoordinator } from "../../src/core/indexer/index-coordinator.js";
+import { getRepoIndexDir } from "../../src/core/indexer/repo-artifact-path.js";
 import type {
 	MetadataStore,
 	RepositoryIndexStatus,
-} from "../../packages/core/src/metadata/metadata-store.js";
-import type { RepositoryRegistry } from "../../packages/core/src/registry/repository-registry.js";
-import type { LexicalSearchBackend } from "../../packages/core/src/search/lexical-search-backend.js";
-import { TypeScriptSymbolExtractor } from "../../packages/core/src/search/symbol-extractor.js";
-import { FileSymbolIndexStore } from "../../packages/core/src/search/symbol-index-store.js";
-import { ZoektLexicalSearchBackend } from "../../packages/core/src/search/zoekt-lexical-search-backend.js";
+} from "../../src/core/metadata/metadata-store.js";
+import type { RepositoryRegistry } from "../../src/core/registry/repository-registry.js";
+import type { LexicalSearchBackend } from "../../src/core/search/lexical-search-backend.js";
+import { TypeScriptSymbolExtractor } from "../../src/core/search/symbol-extractor.js";
+import { FileSymbolIndexStore } from "../../src/core/search/symbol-index-store.js";
+import { ZoektLexicalSearchBackend } from "../../src/core/search/zoekt-lexical-search-backend.js";
 
 function createMetadataStore(
 	backing = new Map<string, RepositoryIndexStatus>(),
@@ -675,3 +675,4 @@ test("IndexCoordinator deduplicates concurrent refresh requests", async (t) => {
 	assert.equal(second.state, "ready");
 	assert.equal(prepareCalls, 1);
 });
+

@@ -1,11 +1,11 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { BootstrapRipgrepLexicalSearchBackend } from "../../packages/core/src/search/ripgrep-lexical-search-backend.js";
+import { BootstrapRipgrepLexicalSearchBackend } from "../../src/core/search/ripgrep-lexical-search-backend.js";
 
 const maxBytesPerFile = 256 * 1024;
 const boundaryQueries = [
@@ -158,3 +158,4 @@ test("BootstrapRipgrepLexicalSearchBackend naive fallback matches the same lexic
 		"bin-hit": [],
 	});
 });
+

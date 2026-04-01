@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -7,8 +7,8 @@ import test from "node:test";
 import {
 	defaultConfig,
 	loadConfig,
-} from "../../packages/core/src/configuration/config.js";
-import { ConfigurationService } from "../../packages/core/src/configuration/configuration-service.js";
+} from "../../src/core/configuration/config.js";
+import { ConfigurationService } from "../../src/core/configuration/configuration-service.js";
 
 test("loadConfig rejects empty executable paths", async (t) => {
 	const tempDir = await mkdtemp(path.join(os.tmpdir(), "codeatlas-config-"));
@@ -149,3 +149,4 @@ test("ConfigurationService prefers the WSL or Linux example config on non-Window
 		path.join(configDir, "codeatlas.wsl.example.json"),
 	);
 });
+

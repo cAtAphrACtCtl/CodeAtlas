@@ -1,7 +1,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-import { getLogger } from "../../core/src/logging/logger.js";
-import { createCodeAtlasServices } from "../../core/src/runtime.js";
+import { getLogger } from "../core/logging/logger.js";
+import { createCodeAtlasServices } from "../core/runtime.js";
 import { createHandlers } from "./mcp/handlers.js";
 import { createCodeAtlasMcpServer } from "./mcp/server.js";
 

@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -7,7 +7,7 @@ import test from "node:test";
 import {
 	defaultConfig,
 	loadConfig,
-} from "../../packages/core/src/configuration/config.js";
+} from "../../src/core/configuration/config.js";
 
 test("defaultConfig sets the documented top-level indexRoot default", () => {
 	const config = defaultConfig("/base");
@@ -31,7 +31,7 @@ test("loadConfig derives Zoekt indexRoot from top-level indexRoot when lexicalBa
 				kind: "zoekt",
 				zoektIndexExecutable: "zoekt-index",
 				zoektSearchExecutable: "zoekt",
-				// No indexRoot here — should derive from top-level
+				// No indexRoot here â€” should derive from top-level
 			},
 		}),
 		"utf8",
@@ -113,3 +113,4 @@ test("loadConfig falls back to built-in default when neither indexRoot is set", 
 		);
 	}
 });
+

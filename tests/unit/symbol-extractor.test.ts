@@ -1,10 +1,10 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { TypeScriptSymbolExtractor } from "../../packages/core/src/search/symbol-extractor.js";
+import { TypeScriptSymbolExtractor } from "../../src/core/search/symbol-extractor.js";
 
 test("TypeScriptSymbolExtractor returns accurate line ranges for nested symbols", async (t) => {
 	const repositoryRoot = await mkdtemp(
@@ -44,3 +44,4 @@ test("TypeScriptSymbolExtractor returns accurate line ranges for nested symbols"
 	assert.equal(buildAtlas?.end_line, 4);
 	assert.equal(buildAtlas?.container_name, "AtlasBuilder");
 });
+

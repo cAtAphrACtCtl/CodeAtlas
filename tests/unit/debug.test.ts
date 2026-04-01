@@ -1,7 +1,7 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import test from "node:test";
 
-import { initializeDebug, toErrorDetails } from "../../packages/core/src/common/debug.js";
+import { initializeDebug, toErrorDetails } from "../../src/core/common/debug.js";
 
 test("initializeDebug maps debug config to process environment", (t) => {
 	const originalDebug = process.env.CODEATLAS_DEBUG;

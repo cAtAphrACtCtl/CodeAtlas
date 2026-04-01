@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import type { CodeAtlasConfig } from "../../../core/src/configuration/config.js";
+import type { CodeAtlasConfig } from "../../core/configuration/config.js";
 import type { createHandlers } from "./handlers.js";
 import {
 	findSymbolSchema,

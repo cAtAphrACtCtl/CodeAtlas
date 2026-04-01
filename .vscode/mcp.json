@@ -5,10 +5,10 @@
       "command": "node",
       "args": [
         "${workspaceFolder}/node_modules/tsx/dist/cli.mjs",
-        "${workspaceFolder}/packages/mcp-server/src/main.ts"
+        "${workspaceFolder}/src/mcp-server/main.ts"
       ],
       "env": {
-        "CODEATLAS_CONFIG": "${workspaceFolder}/config/codeatlas.example.json"
+        "CODEATLAS_CONFIG": "${workspaceFolder}/config/codeatlas.json"
       }
     }
   }

@@ -33,7 +33,7 @@
 import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { getRepoBuildDir, toRepoKey } from "../packages/core/src/indexer/repo-artifact-path.js";
+import { getRepoBuildDir, toRepoKey } from "../src/core/indexer/repo-artifact-path.js";
 
 function usage(): never {
   console.error(`Usage:

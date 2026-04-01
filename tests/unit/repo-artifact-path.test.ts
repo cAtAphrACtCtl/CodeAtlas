@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 
@@ -8,7 +8,7 @@ import {
 	repoIdentityHash,
 	toRepoKey,
 	toSafeRepoSlug,
-} from "../../packages/core/src/indexer/repo-artifact-path.js";
+} from "../../src/core/indexer/repo-artifact-path.js";
 
 // --- toSafeRepoSlug ---
 
@@ -107,3 +107,4 @@ test("same repo with same root always gets the same directory", () => {
 	const dir2 = getRepoIndexDir("/data/zoekt", "repo-a", "/repos/a");
 	assert.equal(dir1, dir2);
 });
+

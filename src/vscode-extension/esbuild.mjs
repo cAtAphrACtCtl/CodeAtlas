@@ -27,7 +27,7 @@ const esbuildProblemMatcherPlugin = {
 };
 
 const buildOptions = {
-	entryPoints: ["src/extension.ts"],
+	entryPoints: ["extension.ts"],
 	bundle: true,
 	format: "cjs",
 	minify: production,

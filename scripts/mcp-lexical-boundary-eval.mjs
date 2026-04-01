@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+﻿import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -22,7 +22,7 @@ async function callTool(client, name, args) {
 async function runSession(configPath, workspaceRoot, repoRoot, repoName, queries) {
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: ["--import", "tsx", "./packages/mcp-server/src/main.ts"],
+    args: ["--import", "tsx", "./src/mcp-server/main.ts"],
     cwd: workspaceRoot,
     env: { CODEATLAS_CONFIG: configPath },
     stderr: "pipe",
@@ -144,3 +144,4 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+

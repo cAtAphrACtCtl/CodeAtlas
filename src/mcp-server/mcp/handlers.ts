@@ -1,18 +1,18 @@
-import { toErrorDetails } from "../../../core/src/common/debug.js";
-import type { CodeAtlasConfig } from "../../../core/src/configuration/config.js";
+import { toErrorDetails } from "../../core/common/debug.js";
+import type { CodeAtlasConfig } from "../../core/configuration/config.js";
 import type {
 	ReadSourceRequest,
 	SearchRequest,
 	SymbolSearchRequest,
-} from "../../../core/src/contracts/search.js";
-import { attachIndexStatusDiagnostics } from "../../../core/src/diagnostics/index-status-diagnostics.js";
-import type { IndexCoordinator } from "../../../core/src/indexer/index-coordinator.js";
-import { runWithRequestContext } from "../../../core/src/logging/context.js";
-import type { Logger } from "../../../core/src/logging/logger.js";
-import type { MetadataStore } from "../../../core/src/metadata/metadata-store.js";
-import type { SourceReader } from "../../../core/src/reader/source-reader.js";
-import type { RepositoryRegistry } from "../../../core/src/registry/repository-registry.js";
-import type { SearchService } from "../../../core/src/search/search-service.js";
+} from "../../core/contracts/search.js";
+import { attachIndexStatusDiagnostics } from "../../core/diagnostics/index-status-diagnostics.js";
+import type { IndexCoordinator } from "../../core/indexer/index-coordinator.js";
+import { runWithRequestContext } from "../../core/logging/context.js";
+import type { Logger } from "../../core/logging/logger.js";
+import type { MetadataStore } from "../../core/metadata/metadata-store.js";
+import type { SourceReader } from "../../core/reader/source-reader.js";
+import type { RepositoryRegistry } from "../../core/registry/repository-registry.js";
+import type { SearchService } from "../../core/search/search-service.js";
 
 export interface HandlerDependencies {
 	config: CodeAtlasConfig;

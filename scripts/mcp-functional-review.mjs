@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -176,7 +176,7 @@ async function main() {
 
     const transport = new StdioClientTransport({
       command: process.execPath,
-      args: ["--import", "tsx", "./packages/mcp-server/src/main.ts"],
+      args: ["--import", "tsx", "./src/mcp-server/main.ts"],
       cwd: workspaceRoot,
       env: {
         CODEATLAS_CONFIG: configPath,
@@ -304,7 +304,7 @@ async function main() {
 
       const readResult = await callTool(client, "read_source", {
         repo: "codeatlas-current",
-        path: "packages/core/src/runtime.ts",
+        path: "src/core/runtime.ts",
         start_line: 35,
         end_line: 50,
       });
@@ -317,7 +317,7 @@ async function main() {
         "read_source",
         {
           repo: "codeatlas-current",
-          path: "packages/core/src/runtime.ts",
+          path: "src/core/runtime.ts",
           start_line: 99999,
           end_line: 100000,
         },
@@ -388,3 +388,4 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+

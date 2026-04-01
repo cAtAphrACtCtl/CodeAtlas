@@ -3,9 +3,9 @@
   "mcp": {
     "codeatlas": {
       "type": "local",
-      "command": ["npx", "tsx", "packages/mcp-server/src/main.ts"],
+      "command": ["npx", "tsx", "src/mcp-server/main.ts"],
       "environment": {
-        "CODEATLAS_CONFIG": "config/codeatlas.dev.json"
+        "CODEATLAS_CONFIG": "config/codeatlas.json"
       },
       "enabled": true
     }

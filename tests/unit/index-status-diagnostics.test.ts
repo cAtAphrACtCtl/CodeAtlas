@@ -1,7 +1,7 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import test from "node:test";
 
-import { attachIndexStatusDiagnostics } from "../../packages/core/src/diagnostics/index-status-diagnostics.js";
+import { attachIndexStatusDiagnostics } from "../../src/core/diagnostics/index-status-diagnostics.js";
 
 test("attachIndexStatusDiagnostics adds friendly Zoekt remediation when fallback is active", () => {
 	const status = attachIndexStatusDiagnostics(
@@ -100,3 +100,4 @@ test("attachIndexStatusDiagnostics explains symbol-only degradation when lexical
 	assert.match(status.diagnostics?.summary ?? "", /symbol indexing/i);
 	assert.match(status.diagnostics?.impact ?? "", /find_symbol/i);
 });
+

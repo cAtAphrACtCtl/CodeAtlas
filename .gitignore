@@ -15,5 +15,6 @@ data/metadata/*.local.json
 data/registry/*.local.json
 data/debug/*.log
 config/data/
+config/codeatlas.json
 
 !.gitkeep

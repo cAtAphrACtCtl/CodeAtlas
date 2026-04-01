@@ -2,6 +2,22 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Debug CLI",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--import", "tsx"],
+      "program": "${workspaceFolder}/src/cli/main.ts",
+      "args": ["list"],
+      "env": {
+        "CODEATLAS_CONFIG": "${workspaceFolder}/config/codeatlas.json"
+      },
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal"
+    },
+    {
       "name": "Debug CodeAtlas MCP",
       "type": "node",
       "request": "attach",
