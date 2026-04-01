@@ -107,65 +107,65 @@ test("defaultConfig keeps debug logging opt-in", () => {
 });
 
 test("loadConfig reads debug.level from config file", async (t) => {
-const tempDir = await mkdtemp(path.join(os.tmpdir(), "codeatlas-config-"));
-t.after(async () => {
-await rm(tempDir, { recursive: true, force: true });
-});
+	const tempDir = await mkdtemp(path.join(os.tmpdir(), "codeatlas-config-"));
+	t.after(async () => {
+		await rm(tempDir, { recursive: true, force: true });
+	});
 
-const configPath = path.join(tempDir, "codeatlas.json");
-await writeFile(
-configPath,
-JSON.stringify({
-debug: {
-level: "debug",
-scopes: ["mcp"],
-trace: false,
-},
-}),
-"utf8",
-);
+	const configPath = path.join(tempDir, "codeatlas.json");
+	await writeFile(
+		configPath,
+		JSON.stringify({
+			debug: {
+				level: "debug",
+				scopes: ["mcp"],
+				trace: false,
+			},
+		}),
+		"utf8",
+	);
 
-const config = await loadConfig(configPath, tempDir);
-assert.equal(config.debug.level, "debug");
-assert.deepEqual(config.debug.scopes, ["mcp"]);
+	const config = await loadConfig(configPath, tempDir);
+	assert.equal(config.debug.level, "debug");
+	assert.deepEqual(config.debug.scopes, ["mcp"]);
 });
 
 test("loadConfig resolves debug.file relative to config dir", async (t) => {
-const tempDir = await mkdtemp(path.join(os.tmpdir(), "codeatlas-config-"));
-t.after(async () => {
-await rm(tempDir, { recursive: true, force: true });
-});
+	const tempDir = await mkdtemp(path.join(os.tmpdir(), "codeatlas-config-"));
+	t.after(async () => {
+		await rm(tempDir, { recursive: true, force: true });
+	});
 
-const configPath = path.join(tempDir, "codeatlas.json");
-await writeFile(
-configPath,
-JSON.stringify({
-debug: {
-level: "info",
-file: "logs/codeatlas.log",
-scopes: [],
-trace: false,
-},
-}),
-"utf8",
-);
+	const configPath = path.join(tempDir, "codeatlas.json");
+	await writeFile(
+		configPath,
+		JSON.stringify({
+			debug: {
+				level: "info",
+				file: "logs/codeatlas.log",
+				scopes: [],
+				trace: false,
+			},
+		}),
+		"utf8",
+	);
 
-const config = await loadConfig(configPath, tempDir);
-assert.equal(
-config.debug.file,
-path.resolve(tempDir, "logs/codeatlas.log"),
-);
+	const config = await loadConfig(configPath, tempDir);
+	assert.equal(
+		config.debug.file,
+		path.resolve(tempDir, "logs/codeatlas.log"),
+	);
 });
 
 test("loadConfig leaves debug.file undefined when not specified", async (t) => {
-const tempDir = await mkdtemp(path.join(os.tmpdir(), "codeatlas-config-"));
-t.after(async () => {
-await rm(tempDir, { recursive: true, force: true });
-});
+	const tempDir = await mkdtemp(path.join(os.tmpdir(), "codeatlas-config-"));
+	t.after(async () => {
+		await rm(tempDir, { recursive: true, force: true });
+	});
 
-const configPath = path.join(tempDir, "codeatlas.json");
-await writeFile(configPath, JSON.stringify({}), "utf8");
+	const configPath = path.join(tempDir, "codeatlas.json");
+	await writeFile(configPath, JSON.stringify({}), "utf8");
 
-const config = await loadConfig(configPath, tempDir);
-assert.equal(config.debug.file, undefined);
+	const config = await loadConfig(configPath, tempDir);
+	assert.equal(config.debug.file, undefined);
 });

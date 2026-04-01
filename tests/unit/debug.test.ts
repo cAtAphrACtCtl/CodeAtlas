@@ -16,6 +16,7 @@ test("debugLog mirrors enabled logs to file when CODEATLAS_LOG_FILE is set", asy
 	const logFilePath = path.join(tempDir, "logs", "codeatlas.log");
 	const originalDebug = process.env.CODEATLAS_DEBUG;
 	const originalLogFile = process.env.CODEATLAS_LOG_FILE;
+	const originalLogLevel = process.env.CODEATLAS_LOG_LEVEL;
 
 	t.after(async () => {
 		if (originalDebug === undefined) {
@@ -30,10 +31,17 @@ test("debugLog mirrors enabled logs to file when CODEATLAS_LOG_FILE is set", asy
 			process.env.CODEATLAS_LOG_FILE = originalLogFile;
 		}
 
+		if (originalLogLevel === undefined) {
+			delete process.env.CODEATLAS_LOG_LEVEL;
+		} else {
+			process.env.CODEATLAS_LOG_LEVEL = originalLogLevel;
+		}
+
 		await rm(tempDir, { recursive: true, force: true });
 	});
 
 	initializeDebug({ level: "debug", scopes: [], trace: false });
+	delete process.env.CODEATLAS_LOG_LEVEL;
 	process.env.CODEATLAS_DEBUG = "mcp";
 	process.env.CODEATLAS_LOG_FILE = logFilePath;
 
@@ -49,6 +57,7 @@ test("debugLog ignores disabled scopes even when CODEATLAS_LOG_FILE is set", asy
 	const logFilePath = path.join(tempDir, "logs", "codeatlas.log");
 	const originalDebug = process.env.CODEATLAS_DEBUG;
 	const originalLogFile = process.env.CODEATLAS_LOG_FILE;
+	const originalLogLevel = process.env.CODEATLAS_LOG_LEVEL;
 
 	t.after(async () => {
 		if (originalDebug === undefined) {
@@ -63,10 +72,17 @@ test("debugLog ignores disabled scopes even when CODEATLAS_LOG_FILE is set", asy
 			process.env.CODEATLAS_LOG_FILE = originalLogFile;
 		}
 
+		if (originalLogLevel === undefined) {
+			delete process.env.CODEATLAS_LOG_LEVEL;
+		} else {
+			process.env.CODEATLAS_LOG_LEVEL = originalLogLevel;
+		}
+
 		await rm(tempDir, { recursive: true, force: true });
 	});
 
 	initializeDebug({ level: "debug", scopes: [], trace: false });
+	delete process.env.CODEATLAS_LOG_LEVEL;
 	process.env.CODEATLAS_DEBUG = "runtime";
 	process.env.CODEATLAS_LOG_FILE = logFilePath;
 
