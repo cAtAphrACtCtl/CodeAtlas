@@ -20,7 +20,7 @@ function Resolve-CodeAtlasPath {
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $ConfigPath = Join-Path $ProjectRoot "config\codeatlas.json"
-$Config = Get-Content -Raw -Path $ConfigPath | ConvertFrom-Json -Depth 20
+$Config = Get-Content -Raw -Path $ConfigPath | ConvertFrom-Json
 $LogFile = $null
 
 if ($Config.logging -and $Config.logging.file -and $Config.logging.file.enabled -ne $false) {

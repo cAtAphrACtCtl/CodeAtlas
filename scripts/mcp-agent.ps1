@@ -56,7 +56,7 @@ function New-TemporaryConfigPath {
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $resolvedConfigPath = [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot $ConfigPath))
 
-$configObject = Get-Content -Raw -Path $resolvedConfigPath | ConvertFrom-Json -Depth 20
+$configObject = Get-Content -Raw -Path $resolvedConfigPath | ConvertFrom-Json
 $effectiveConfigPath = $resolvedConfigPath
 $temporaryConfigPath = $null
 

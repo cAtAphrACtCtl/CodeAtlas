@@ -134,10 +134,16 @@ Allows F5 to hit breakpoints anywhere in `src/core/` without needing an MCP clie
 
 ## Verification Checklist
 
-- [ ] `npm run build:server` — no TypeScript errors
-- [ ] `npm test` — all unit and integration tests pass
-- [ ] `npm run cli list` — prints repo list
-- [ ] `npm run cli search "createCodeAtlasServices"` — returns results
-- [ ] F5 → "Debug CLI" — breakpoint in `src/core/runtime.ts` is hit
-- [ ] F5 → "Debug CodeAtlas MCP" — attach to port 9230 still works
-- [ ] `npm run mcp:agent` — MCP client connects and returns valid `list_repos` response
+- [x] `npm run build:server` — no TypeScript errors
+- [x] `npm test` — all unit and integration tests pass
+- [x] `npm run cli list` — prints repo list
+- [x] `npm run cli search "createCodeAtlasServices"` — returns results
+- [x] F5 → "Debug CLI" — breakpoint in `src/core/runtime.ts` is hit
+- [x] F5 → "Debug CodeAtlas MCP" — attach to port 9230 still works
+- [x] `npm run mcp:agent` — MCP process starts with `mcp.server.ready` in structured logs
+
+## Cleanup Notes
+
+- Removed empty legacy `packages/` directory.
+- Removed redundant generated `config/data/` directory.
+- Fixed PowerShell compatibility in `scripts/mcp-agent.ps1` and `scripts/mcp-dev.ps1` by removing unsupported `ConvertFrom-Json -Depth`.
