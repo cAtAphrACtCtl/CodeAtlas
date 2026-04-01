@@ -15,6 +15,7 @@ data/metadata/*.local.json
 data/registry/*.local.json
 data/debug/*.log
 config/data/
+.vscode/
 config/codeatlas.json
 
 !.gitkeep
