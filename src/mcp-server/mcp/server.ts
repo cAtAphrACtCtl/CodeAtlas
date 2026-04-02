@@ -3,12 +3,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CodeAtlasConfig } from "../../core/configuration/config.js";
 import type { createHandlers } from "./handlers.js";
 import {
+	deleteIndexSchema,
 	findSymbolSchema,
 	getIndexStatusSchema,
 	readSourceSchema,
 	refreshRepoSchema,
 	registerRepoSchema,
 	searchRequestSchema,
+	unregisterRepoSchema,
 } from "./tool-contracts.js";
 
 export function createCodeAtlasMcpServer(
@@ -110,6 +112,26 @@ export function createCodeAtlasMcpServer(
 		{ title: "Refresh repository", readOnlyHint: false, idempotentHint: true },
 		async (request) => {
 			return handlers.refreshRepo(request);
+		},
+	);
+
+	server.tool(
+		"unregister_repo",
+		"Unregister a repository, with optional index artifact and metadata cleanup.",
+		unregisterRepoSchema,
+		{ title: "Unregister repository", readOnlyHint: false, idempotentHint: true },
+		async (request) => {
+			return handlers.unregisterRepo(request);
+		},
+	);
+
+	server.tool(
+		"delete_index",
+		"Delete lexical, symbol, or all index artifacts for a registered repository and update index status.",
+		deleteIndexSchema,
+		{ title: "Delete repository index", readOnlyHint: false, idempotentHint: true },
+		async (request) => {
+			return handlers.deleteIndex(request);
 		},
 	);
 

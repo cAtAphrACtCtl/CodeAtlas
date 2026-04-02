@@ -29,6 +29,7 @@ export interface LexicalSearchBackend {
 	prepareRepository(
 		repository: RepositoryRecord,
 	): Promise<RepositoryIndexStatus>;
+	deleteRepositoryArtifacts?(repository: RepositoryRecord): Promise<void>;
 	searchRepository(
 		repository: RepositoryRecord,
 		request: BackendSearchRequest,

@@ -41,6 +41,11 @@ async function exists(filePath) {
   }
 }
 
+async function cleanupFunctionalReviewArtifacts(tempRoot) {
+  console.log("CLEANUP removing temporary registry, metadata, index, and log artifacts", tempRoot);
+  await rm(tempRoot, { recursive: true, force: true });
+}
+
 async function resolvePreferredLexicalBackend(workspaceRoot) {
   const windowsInstalledIndex = path.join(workspaceRoot, ".tools", "zoekt", "bin", "zoekt-index.exe");
   const windowsInstalledSearch = path.join(workspaceRoot, ".tools", "zoekt", "bin", "zoekt.exe");
@@ -198,11 +203,13 @@ async function main() {
       for (const requiredTool of [
         "list_repos",
         "register_repo",
+        "unregister_repo",
         "code_search",
         "find_symbol",
         "semantic_search",
         "hybrid_search",
         "read_source",
+        "delete_index",
         "get_index_status",
         "refresh_repo",
       ]) {
@@ -233,6 +240,15 @@ async function main() {
         );
       }
       console.log("PASS register_repo indexes current repository successfully");
+
+      const duplicateRootRegister = await callTool(client, "register_repo", {
+        name: "codeatlas-current-alias",
+        root_path: workspaceRoot,
+      });
+      const duplicateRootPayload = duplicateRootRegister.structuredContent;
+      assert.equal(duplicateRootPayload.repository_warnings.length, 1);
+      assert.equal(duplicateRootPayload.repository_warnings[0].repo, "codeatlas-current-alias");
+      console.log("PASS register_repo surfaces duplicate-root warnings for aliases");
 
       await expectToolFailure(
         client,
@@ -364,6 +380,24 @@ async function main() {
         );
       }
       console.log("PASS refresh_repo refreshes current repository successfully");
+
+      const deleteIndexResult = await callTool(client, "delete_index", {
+        repo: "codeatlas-current",
+        target: "all",
+      });
+      const deleteIndexPayload = deleteIndexResult.structuredContent;
+      assert.equal(deleteIndexPayload.result.removedLexical, true);
+      assert.equal(deleteIndexPayload.result.removedSymbols, true);
+      assert.equal(deleteIndexPayload.index_status[0].state, "not_indexed");
+      console.log("PASS delete_index removes repository index artifacts and updates status");
+
+      const unregisterResult = await callTool(client, "unregister_repo", {
+        repo: "codeatlas-current-alias",
+        purge_metadata: true,
+      });
+      const unregisterPayload = unregisterResult.structuredContent;
+      assert.equal(unregisterPayload.result.repositoryRemoved, true);
+      console.log("PASS unregister_repo removes repository registration cleanly");
     } finally {
       await client.close();
     }
@@ -379,7 +413,7 @@ async function main() {
     console.log("STDERR", stderrChunks.join(""));
     console.log("Functional review completed successfully.");
   } finally {
-    await rm(tempRoot, { recursive: true, force: true });
+    await cleanupFunctionalReviewArtifacts(tempRoot);
   }
 }
 

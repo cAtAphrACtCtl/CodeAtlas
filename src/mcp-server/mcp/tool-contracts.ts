@@ -47,3 +47,14 @@ export const getIndexStatusSchema = {
 export const refreshRepoSchema = {
 	repo: z.string().min(1),
 };
+
+export const unregisterRepoSchema = {
+	repo: z.string().min(1),
+	purge_index: z.boolean().optional(),
+	purge_metadata: z.boolean().optional(),
+};
+
+export const deleteIndexSchema = {
+	repo: z.string().min(1),
+	target: z.enum(["lexical", "symbol", "all"]).optional(),
+};

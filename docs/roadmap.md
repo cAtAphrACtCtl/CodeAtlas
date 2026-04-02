@@ -25,6 +25,7 @@ Current near-term focus:
 
 - finish Zoekt operational hardening, large-repository validation, and refresh-after-update behavior
 - make repository freshness, fallback, and error states explicit
+- make repository lifecycle cleanup and duplicate-root alias visibility operationally safe
 - keep custom symbol extraction under evaluation instead of expanding it further
 - defer semantic and hybrid implementation work until Zoekt-backed retrieval and update flows are proven
 
@@ -66,6 +67,9 @@ Delivered so far:
 - migration script for moving from the old shared flat Zoekt index layout to per-repository directories
 - aligned Zoekt, ripgrep, and naive fallback lexical boundary behavior for skipped directories and `maxBytesPerFile` handling
 - additive MCP-facing index diagnostics for degraded or misconfigured environments, with human-readable remediation guidance
+- additive lifecycle operations for `unregister_repo` and `delete_index`
+- duplicate-root warning surfacing in CLI and MCP status flows
+- hashed symbol index file naming to avoid case-collision cleanup issues
 - structured logging across runtime, MCP handlers, indexing, backend selection, symbol extraction, registry, metadata, and source reads through a shared logger, JSONL file sink, and request-scoped context propagation
 - backward-compatible mapping from legacy `debug` config to the top-level `logging` configuration
 - repeatable real-MCP refresh evaluation tooling for initial indexing time, repeated refresh time, query latency, and synthetic refresh-after-update validation
@@ -78,6 +82,7 @@ Remaining work:
 - improve diagnostics for backend misconfiguration and recovery
 - make fallback behavior more explicit in metadata and user-visible status
 - tighten operational guidance around when ripgrep fallback is acceptable
+- expand lifecycle cleanup failure reporting and manual recovery guidance for broken artifact states
 
 Exit criteria:
 
@@ -132,12 +137,13 @@ Delivered so far:
 
 - explicit `indexing` and `stale` status states in the metadata model
 - lexical readiness checks separated from stricter symbol readiness checks
+- functional review automation now validates lifecycle commands and removes temporary review registry, metadata, index, and log artifacts after execution
 
 Planned work:
 
 - refresh queueing and concurrency control
 - stale index detection, repository update handling, and clearer repository status transitions
-- artifact cleanup and recovery flows for broken metadata or missing index files
+- deeper artifact cleanup and recovery flows for broken metadata or missing index files
 - benchmark suites for large repositories and repeated refresh after repo changes
 - contract and relevance regression checks for Zoekt-first workflows
 - more explicit user-visible diagnostics for ready, stale, partial, and error states

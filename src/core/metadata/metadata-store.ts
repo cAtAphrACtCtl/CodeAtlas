@@ -39,4 +39,5 @@ export interface MetadataStore {
 	listIndexStatuses(): Promise<RepositoryIndexStatus[]>;
 	getIndexStatus(repo: string): Promise<RepositoryIndexStatus | null>;
 	setIndexStatus(status: RepositoryIndexStatus): Promise<void>;
+	deleteIndexStatus?(repo: string): Promise<RepositoryIndexStatus | null>;
 }

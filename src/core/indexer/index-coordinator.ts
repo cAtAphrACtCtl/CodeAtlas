@@ -10,6 +10,23 @@ import type { TypeScriptSymbolExtractor } from "../search/symbol-extractor.js";
 import type { SymbolIndexStore } from "../search/symbol-index-store.js";
 import { getLogger, type Logger } from "../logging/logger.js";
 
+export type IndexDeleteTarget = "lexical" | "symbol" | "all";
+
+export interface DeleteIndexResult {
+	repo: string;
+	removedLexical: boolean;
+	removedSymbols: boolean;
+	errors?: string[];
+}
+
+export interface UnregisterRepositoryResult {
+	repositoryRemoved: boolean;
+	removedIndexStatus: boolean;
+	removedLexical: boolean;
+	removedSymbols: boolean;
+	errors?: string[];
+}
+
 export class IndexCoordinator {
 	private readonly inFlightRefreshes = new Map<
 		string,
@@ -109,6 +126,123 @@ export class IndexCoordinator {
 				this.inFlightRefreshes.delete(repoName);
 			}
 		}
+	}
+
+	async deleteRepositoryIndex(
+		repoName: string,
+		target: IndexDeleteTarget = "all",
+	): Promise<DeleteIndexResult> {
+		this.assertRefreshNotInFlight(repoName);
+
+		const repository = await this.registry.getRepository(repoName);
+		if (!repository) {
+			throw new CodeAtlasError(`Unknown repository: ${repoName}`);
+		}
+
+		const removeLexical = target === "lexical" || target === "all";
+		const removeSymbols = target === "symbol" || target === "all";
+		let removedLexical = false;
+		let removedSymbols = false;
+		const errors: string[] = [];
+
+		if (removeLexical) {
+			try {
+				await this.lexicalBackend.deleteRepositoryArtifacts?.(repository);
+				removedLexical = true;
+			} catch (error) {
+				errors.push(`lexical cleanup failed: ${String(error)}`);
+			}
+		}
+
+		if (removeSymbols) {
+			try {
+				await this.symbolIndexStore.deleteSymbols?.(repository.name);
+				removedSymbols = true;
+			} catch (error) {
+				errors.push(`symbol cleanup failed: ${String(error)}`);
+			}
+		}
+
+		const existing = await this.metadataStore.getIndexStatus(repoName);
+		await this.metadataStore.setIndexStatus({
+			repo: repository.name,
+			backend: existing?.backend ?? this.lexicalBackend.kind,
+			configuredBackend: existing?.configuredBackend ?? this.lexicalBackend.kind,
+			state: removedLexical ? "not_indexed" : (existing?.state ?? "not_indexed"),
+			symbolState: removedSymbols
+				? "not_indexed"
+				: (existing?.symbolState ?? "not_indexed"),
+			reason: undefined,
+			lastIndexedAt: removedLexical ? undefined : existing?.lastIndexedAt,
+			symbolLastIndexedAt: removedSymbols
+				? undefined
+				: existing?.symbolLastIndexedAt,
+			symbolCount: removedSymbols ? 0 : existing?.symbolCount,
+			detail:
+				errors.length === 0
+					? `Index cleanup completed (target=${target})`
+					: `Index cleanup partially completed (target=${target}): ${errors.join("; ")}`,
+		});
+
+		return {
+			repo: repoName,
+			removedLexical,
+			removedSymbols,
+			errors: errors.length > 0 ? errors : undefined,
+		};
+	}
+
+	async unregisterRepository(
+		repoName: string,
+		options: { purgeIndex?: boolean; purgeMetadata?: boolean } = {},
+	): Promise<UnregisterRepositoryResult> {
+		this.assertRefreshNotInFlight(repoName);
+		if (!this.registry.unregisterRepository) {
+			throw new CodeAtlasError(
+				"Repository registry does not support unregister operation",
+			);
+		}
+
+		const purgeIndex = options.purgeIndex ?? false;
+		const purgeMetadata = options.purgeMetadata ?? true;
+		const existingRepository = await this.registry.getRepository(repoName);
+		let removedLexical = false;
+		let removedSymbols = false;
+		const errors: string[] = [];
+
+		if (existingRepository && purgeIndex) {
+			try {
+				await this.lexicalBackend.deleteRepositoryArtifacts?.(existingRepository);
+				removedLexical = true;
+			} catch (error) {
+				errors.push(`lexical cleanup failed: ${String(error)}`);
+			}
+			try {
+				await this.symbolIndexStore.deleteSymbols?.(existingRepository.name);
+				removedSymbols = true;
+			} catch (error) {
+				errors.push(`symbol cleanup failed: ${String(error)}`);
+			}
+		}
+
+		const removedRepository = await this.registry.unregisterRepository(repoName);
+		let removedIndexStatus = false;
+		if (purgeMetadata && this.metadataStore.deleteIndexStatus) {
+			try {
+				const removedStatus = await this.metadataStore.deleteIndexStatus(repoName);
+				removedIndexStatus = removedStatus !== null;
+			} catch (error) {
+				errors.push(`metadata cleanup failed: ${String(error)}`);
+			}
+		}
+
+		return {
+			repositoryRemoved: removedRepository !== null,
+			removedIndexStatus,
+			removedLexical,
+			removedSymbols,
+			errors: errors.length > 0 ? errors : undefined,
+		};
 	}
 
 	async markRepositoryStale(
@@ -344,5 +478,15 @@ export class IndexCoordinator {
 				}
 			);
 		});
+	}
+
+	private assertRefreshNotInFlight(repoName: string): void {
+		if (!this.inFlightRefreshes.has(repoName)) {
+			return;
+		}
+
+		throw new CodeAtlasError(
+			`Cannot mutate lifecycle for '${repoName}' while refresh_repo is in-flight`,
+		);
 	}
 }

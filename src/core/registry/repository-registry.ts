@@ -14,4 +14,5 @@ export interface RepositoryRegistry {
 	listRepositories(): Promise<RepositoryRecord[]>;
 	getRepository(name: string): Promise<RepositoryRecord | null>;
 	registerRepository(input: RepositoryRegistration): Promise<RepositoryRecord>;
+	unregisterRepository?(name: string): Promise<RepositoryRecord | null>;
 }

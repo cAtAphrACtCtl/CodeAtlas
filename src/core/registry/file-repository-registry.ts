@@ -88,6 +88,32 @@ export class FileRepositoryRegistry implements RepositoryRegistry {
 		return record;
 	}
 
+	async unregisterRepository(name: string): Promise<RepositoryRecord | null> {
+		const document = await this.readDocument();
+		const index = document.repositories.findIndex(
+			(repository) => repository.name === name,
+		);
+
+		if (index < 0) {
+			this.logDebug("repository not found during unregister", {
+				name,
+				registryPath: this.registryPath,
+			});
+			return null;
+		}
+
+		const [removed] = document.repositories.splice(index, 1);
+		await writeJsonFile(this.registryPath, document);
+
+		this.logDebug("unregistered repository", {
+			name: removed.name,
+			rootPath: removed.rootPath,
+			repositoryCount: document.repositories.length,
+		});
+
+		return removed;
+	}
+
 	private async readDocument(): Promise<RegistryDocument> {
 		try {
 			const document = await readJsonFile<RegistryDocument>(this.registryPath, {

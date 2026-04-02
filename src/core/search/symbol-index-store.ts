@@ -1,4 +1,5 @@
-import { mkdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 
 import { toErrorDetails } from "../common/debug.js";
@@ -30,10 +31,25 @@ function isSymbolRecord(value: unknown): value is SymbolRecord {
 export interface SymbolIndexStore {
 	getSymbols(repo: string): Promise<SymbolRecord[]>;
 	setSymbols(repo: string, symbols: SymbolRecord[]): Promise<void>;
+	deleteSymbols?(repo: string): Promise<void>;
 }
 
 function toSafeFileName(repo: string): string {
 	return repo.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+}
+
+function symbolFileName(repo: string): string {
+	const hash = createHash("sha256").update(repo).digest("hex").slice(0, 8);
+	return `${toSafeFileName(repo)}-${hash}.json`;
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+	try {
+		await access(filePath);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 export class FileSymbolIndexStore implements SymbolIndexStore {
@@ -49,9 +65,13 @@ export class FileSymbolIndexStore implements SymbolIndexStore {
 
 	async getSymbols(repo: string): Promise<SymbolRecord[]> {
 		const indexPath = this.getIndexPath(repo);
+		const legacyIndexPath = this.getLegacyIndexPath(repo);
+		const preferredIndexPath = (await fileExists(indexPath))
+			? indexPath
+			: legacyIndexPath;
 
 		try {
-			const document = await readJsonFile<SymbolIndexDocument>(indexPath, {
+			const document = await readJsonFile<SymbolIndexDocument>(preferredIndexPath, {
 				repo,
 				symbols: [],
 			});
@@ -61,14 +81,14 @@ export class FileSymbolIndexStore implements SymbolIndexStore {
 				: [];
 			this.logDebug("loaded symbols", {
 				repo,
-				indexPath,
+				indexPath: preferredIndexPath,
 				symbolCount: symbols.length,
 			});
 			return symbols;
 		} catch (error) {
 			this.logDebug("failed to load symbols", {
 				repo,
-				indexPath,
+				indexPath: preferredIndexPath,
 				...toErrorDetails(error),
 			});
 			throw error;
@@ -77,11 +97,15 @@ export class FileSymbolIndexStore implements SymbolIndexStore {
 
 	async setSymbols(repo: string, symbols: SymbolRecord[]): Promise<void> {
 		const indexPath = this.getIndexPath(repo);
+		const legacyIndexPath = this.getLegacyIndexPath(repo);
 		await mkdir(path.dirname(indexPath), { recursive: true });
 		await writeJsonFile(indexPath, {
 			repo,
 			symbols,
 		});
+		if (legacyIndexPath !== indexPath) {
+			await rm(legacyIndexPath, { force: true });
+		}
 		this.logDebug("stored symbols", {
 			repo,
 			indexPath,
@@ -89,7 +113,24 @@ export class FileSymbolIndexStore implements SymbolIndexStore {
 		});
 	}
 
+	async deleteSymbols(repo: string): Promise<void> {
+		const indexPath = this.getIndexPath(repo);
+		const legacyIndexPath = this.getLegacyIndexPath(repo);
+		await rm(indexPath, { force: true });
+		if (legacyIndexPath !== indexPath) {
+			await rm(legacyIndexPath, { force: true });
+		}
+		this.logDebug("deleted symbols", {
+			repo,
+			indexPath,
+		});
+	}
+
 	private getIndexPath(repo: string): string {
+		return path.join(this.indexRoot, "symbols", symbolFileName(repo));
+	}
+
+	private getLegacyIndexPath(repo: string): string {
 		return path.join(this.indexRoot, "symbols", `${toSafeFileName(repo)}.json`);
 	}
 }

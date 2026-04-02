@@ -10,6 +10,8 @@
  *   list                                              List all registered repositories
  *   register <path> [--name <name>]                  Register a repository and index it
  *   refresh <repo>                                    Re-index a repository
+ *   unregister <repo> [--purge-index] [--keep-metadata]  Unregister a repository
+ *   delete-index <repo> [--target lexical|symbol|all]    Delete repository index artifacts
  *   status [repo]                                     Show index status
  *   search <query> [--repos r1,r2] [--limit n]       Lexical code search
  *   symbol <name> [--repos r1,r2] [--kinds k1,k2]   Symbol lookup
@@ -22,6 +24,10 @@ import { stdin as input, stdout as output } from "node:process";
 
 import type { RepositoryIndexStatus } from "../core/metadata/metadata-store.js";
 import type { RepositoryRecord } from "../core/registry/repository-registry.js";
+import {
+	collectRepositoryWarnings,
+	getRepositoryWarningsForRepo,
+} from "../core/registry/repository-warnings.js";
 import { createCodeAtlasServices } from "../core/runtime.js";
 
 class CliUsageError extends Error {
@@ -74,6 +80,9 @@ function stateSymbol(state: string): string {
 
 function printRepoTable(repos: RepositoryRecord[], statuses: RepositoryIndexStatus[]): void {
 	const statusMap = new Map(statuses.map((s) => [s.repo, s]));
+	const warningsMap = new Map(
+		collectRepositoryWarnings(repos).map((warning) => [warning.repo, warning]),
+	);
 	if (repos.length === 0) {
 		console.log("No repositories registered.");
 		return;
@@ -91,6 +100,10 @@ function printRepoTable(repos: RepositoryRecord[], statuses: RepositoryIndexStat
 		);
 		if (s?.detail) {
 			console.log(`  detail: ${s.detail}`);
+		}
+		const warning = warningsMap.get(repo.name);
+		if (warning) {
+			console.log(`  warning: ${warning.message}`);
 		}
 	}
 }
@@ -138,6 +151,13 @@ async function cmdRegister(positional: string[], flags: Record<string, string>):
 	console.log(`Registered. Indexing...`);
 	const status = await indexCoordinator.refreshRepository(record.name);
 	printStatus(status);
+	const warnings = getRepositoryWarningsForRepo(
+		await registry.listRepositories(),
+		record.name,
+	);
+	for (const warning of warnings) {
+		console.log(`warning: ${warning.message}`);
+	}
 }
 
 async function cmdRefresh(positional: string[]): Promise<void> {
@@ -151,6 +171,70 @@ async function cmdRefresh(positional: string[]): Promise<void> {
 	printStatus(status);
 }
 
+async function cmdUnregister(
+	positional: string[],
+	flags: Record<string, string>,
+): Promise<void> {
+	const repoName = positional[0];
+	if (!repoName) {
+		throw new CliUsageError(
+			"Usage: codeatlas unregister <repo> [--purge-index] [--keep-metadata]",
+		);
+	}
+
+	const { indexCoordinator } = await createCodeAtlasServices();
+	const purgeIndex = flags["purge-index"] === "true";
+	const purgeMetadata = flags["keep-metadata"] !== "true";
+
+	const result = await indexCoordinator.unregisterRepository(repoName, {
+		purgeIndex,
+		purgeMetadata,
+	});
+
+	console.log(`unregister '${repoName}' completed:`);
+	console.log(`  repository removed: ${result.repositoryRemoved}`);
+	console.log(`  metadata removed:   ${result.removedIndexStatus}`);
+	console.log(`  lexical removed:    ${result.removedLexical}`);
+	console.log(`  symbols removed:    ${result.removedSymbols}`);
+	for (const error of result.errors ?? []) {
+		console.log(`  error:              ${error}`);
+	}
+}
+
+async function cmdDeleteIndex(
+	positional: string[],
+	flags: Record<string, string>,
+): Promise<void> {
+	const repoName = positional[0];
+	if (!repoName) {
+		throw new CliUsageError(
+			"Usage: codeatlas delete-index <repo> [--target lexical|symbol|all]",
+		);
+	}
+
+	const target =
+		(flags.target as "lexical" | "symbol" | "all" | undefined) ?? "all";
+	if (!["lexical", "symbol", "all"].includes(target)) {
+		throw new CliUsageError(
+			"Usage: --target must be one of lexical, symbol, all",
+		);
+	}
+
+	const { indexCoordinator } = await createCodeAtlasServices();
+	const result = await indexCoordinator.deleteRepositoryIndex(repoName, target);
+	const [status] = await indexCoordinator.getStatus(repoName);
+
+	console.log(`delete-index '${repoName}' completed:`);
+	console.log(`  lexical removed: ${result.removedLexical}`);
+	console.log(`  symbols removed: ${result.removedSymbols}`);
+	for (const error of result.errors ?? []) {
+		console.log(`  error: ${error}`);
+	}
+	if (status) {
+		printStatus(status);
+	}
+}
+
 async function cmdStatus(positional: string[]): Promise<void> {
 	const repoName = positional[0];
 	const { registry, metadataStore } = await createCodeAtlasServices();
@@ -161,6 +245,13 @@ async function cmdStatus(positional: string[]): Promise<void> {
 			throw new CliUsageError(`No status found for repository '${repoName}'.`);
 		}
 		printStatus(status);
+		const warnings = getRepositoryWarningsForRepo(
+			await registry.listRepositories(),
+			repoName,
+		);
+		for (const warning of warnings) {
+			console.log(`warning:        ${warning.message}`);
+		}
 	} else {
 		const repos = await registry.listRepositories();
 		const statuses = await metadataStore.listIndexStatuses();
@@ -256,6 +347,12 @@ async function executeCommand(
 		case "refresh":
 			await cmdRefresh(rest);
 			break;
+		case "unregister":
+			await cmdUnregister(rest, flags);
+			break;
+		case "delete-index":
+			await cmdDeleteIndex(rest, flags);
+			break;
 		case "status":
 			await cmdStatus(rest);
 			break;
@@ -342,6 +439,8 @@ Commands:
   list                                              List all registered repositories
   register <path> [--name <name>]                  Register and index a repository
   refresh <repo>                                    Re-index a repository
+	unregister <repo> [--purge-index] [--keep-metadata]  Unregister repository
+	delete-index <repo> [--target lexical|symbol|all]    Delete index artifacts
   status [repo]                                     Show index status (all or one)
   search <query> [--repos r1,r2] [--limit n]       Lexical code search
   symbol <name>   [--repos r1,r2] [--kinds k1,k2] [--exact]  Symbol lookup

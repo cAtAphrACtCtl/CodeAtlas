@@ -65,6 +65,30 @@ export class FileMetadataStore implements MetadataStore {
 		});
 	}
 
+	async deleteIndexStatus(repo: string): Promise<RepositoryIndexStatus | null> {
+		const document = await this.readDocument();
+		const index = document.statuses.findIndex(
+			(candidate) => candidate.repo === repo,
+		);
+
+		if (index < 0) {
+			this.logDebug("index status not found for delete", {
+				metadataPath: this.metadataPath,
+				repo,
+			});
+			return null;
+		}
+
+		const [removed] = document.statuses.splice(index, 1);
+		await writeJsonFile(this.metadataPath, document);
+		this.logDebug("deleted index status", {
+			metadataPath: this.metadataPath,
+			repo,
+			remainingCount: document.statuses.length,
+		});
+		return removed;
+	}
+
 	private async readDocument(): Promise<MetadataDocument> {
 		try {
 			const document = await readJsonFile<MetadataDocument>(this.metadataPath, {

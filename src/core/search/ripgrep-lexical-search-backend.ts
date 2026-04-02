@@ -117,6 +117,10 @@ export class BootstrapRipgrepLexicalSearchBackend
 		return status;
 	}
 
+	async deleteRepositoryArtifacts(): Promise<void> {
+		return;
+	}
+
 	async searchRepository(
 		repository: RepositoryRecord,
 		request: BackendSearchRequest,

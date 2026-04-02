@@ -109,8 +109,10 @@ Tracks locally registered repositories.
 Responsibilities:
 
 - register repositories by logical name and local path
+- unregister repositories by logical name
 - list configured repositories
 - resolve repositories during search and source reads
+- surface duplicate-root warnings without forbidding local aliasing
 
 Storage:
 
@@ -124,6 +126,7 @@ Tracks index status and backend readiness information.
 Responsibilities:
 
 - store repository index state
+- delete repository index state during lifecycle cleanup
 - record last refresh times
 - distinguish `not_indexed`, `indexing`, `ready`, `stale`, and `error` states
 - track backend-specific metadata without leaking it into MCP contracts
@@ -147,8 +150,10 @@ Responsibilities:
 
 - prepare or refresh lexical index state
 - prepare or refresh local symbol index state
+- orchestrate repository lifecycle cleanup for unregister and delete-index flows
 - update metadata store status
 - isolate per-repository refresh from other repositories
+- reject lifecycle mutations while repository refresh is already in-flight
 
 This design matters for the 10GB repository requirement because large repositories must be refreshable independently.
 
@@ -212,12 +217,20 @@ Refresh flow:
 - `refresh_repo` calls the active lexical backend to build or refresh lexical state for exactly one repository
 - in Zoekt mode, the lexical refresh step invokes Zoekt indexing for the repository root, writing shards to that repository's dedicated index subdirectory
 - after lexical refresh completes, the same repository refresh cycle continues through symbol extraction and metadata updates
+- `delete_index` removes lexical and or symbol artifacts for exactly one repository and transitions status back to `not_indexed` for the successfully deleted portions
+- `unregister_repo` removes a single repository registration and can optionally purge metadata and index artifacts first
 
 Current coupling note:
 
 - the current implementation couples lexical refresh and experimental symbol extraction in one repository refresh cycle
 - this keeps readiness simple, but it also mixes pure Zoekt validation cost with symbol extraction cost
 - near-term architecture work is to validate Zoekt indexing and repository update behavior first, then decide whether symbol refresh should be decoupled or reduced
+
+Lifecycle safety note:
+
+- lexical artifacts are isolated by repo key derived from repository name and root path
+- symbol artifacts now include a repo-name hash suffix to avoid collisions on case-insensitive filesystems
+- duplicate root-path registrations remain possible, but are surfaced as warnings so operators can see alias relationships before deleting or refreshing
 
 ## Structured Logging And Observability
 

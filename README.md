@@ -51,15 +51,19 @@ Implemented now:
 
 - `list_repos`
 - `register_repo`
+- `unregister_repo`
 - `code_search`
 - `find_symbol`
 - `read_source`
+- `delete_index`
 - `get_index_status`
 - `refresh_repo`
 
 `find_symbol` is implemented, but its current TS and JS-specific backing index is still under evaluation. When `exact: true` is supplied, only case-insensitive exact symbol name matches are returned.
 
 `list_repos`, `register_repo`, `refresh_repo`, and `get_index_status` now return additive `index_status.diagnostics` data when the environment is degraded or misconfigured. The field is user-facing and includes `severity`, `summary`, likely causes, and suggested remedies without changing the existing MCP tool contracts.
+
+`list_repos`, `register_repo`, and `get_index_status` also return additive `repository_warnings` data for duplicate root-path registrations. This warning-only policy keeps local aliasing possible while making shared-root operational risk visible.
 
 Reserved with stable contracts (placeholder implementations):
 
@@ -73,6 +77,30 @@ Important boundary:
 - MCP tools validate environment readiness and report remediation steps
 - external dependency installation stays outside MCP and remains a manual script or operator action
 - Zoekt setup is still handled through the repository scripts and example configs rather than a new MCP install tool
+
+## Repository Lifecycle Management
+
+CodeAtlas now supports explicit repository and index lifecycle operations in both CLI and MCP surfaces.
+
+Available lifecycle actions:
+
+- `unregister_repo` removes a repository registration and can optionally purge metadata or index artifacts
+- `delete_index` removes lexical, symbol, or all index artifacts for one repository and updates status accordingly
+- duplicate root-path registrations remain allowed, but are surfaced through `repository_warnings`
+
+CLI examples:
+
+```bash
+npm run cli -- unregister codeatlas-current
+npm run cli -- unregister codeatlas-current --purge-index
+npm run cli -- delete-index codeatlas-current --target all
+```
+
+Safety notes:
+
+- lifecycle mutations fail fast while `refresh_repo` is in-flight for the same repository
+- per-repository Zoekt index directories remain isolated by repo key, so deleting one alias does not remove another alias's lexical index
+- symbol index files now use a repo-name hash suffix so names like `codeatlas` and `CodeAtlas` do not collide on case-insensitive filesystems
 
 ## Structured Logging
 
@@ -138,6 +166,14 @@ Inspect the resulting JSONL stream with:
 ```powershell
 Get-Content -Path .\data\debug\codeatlas.log.jsonl -Tail 30
 ```
+
+For a repeatable end-to-end MCP validation run, use:
+
+```powershell
+npm run mcp:functional-review
+```
+
+That functional review now validates lifecycle operations including duplicate-root warnings, `delete_index`, and `unregister_repo`. It also removes its temporary registry, metadata, index, and log artifacts after the run so review data does not accumulate in the workspace.
 
 ## Search Result Contract
 

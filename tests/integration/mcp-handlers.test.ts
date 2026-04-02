@@ -452,3 +452,173 @@ test("MCP handlers attach friendly diagnostics when configured Zoekt is unavaila
 	);
 });
 
+test("MCP handlers expose unregister and delete-index lifecycle flows", async (t) => {
+	const tempRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-lifecycle-handler-"));
+	t.after(async () => {
+		await rm(tempRoot, { recursive: true, force: true });
+	});
+	const repositoryRoot = path.join(tempRoot, "sample-repo");
+	const registryPath = path.join(tempRoot, "registry.json");
+	const metadataPath = path.join(tempRoot, "metadata.json");
+
+	await mkdir(path.join(repositoryRoot, "src"), { recursive: true });
+	await writeFile(
+		path.join(repositoryRoot, "src", "feature.ts"),
+		"export function buildAtlas() { return 'code atlas'; }\n",
+		"utf8",
+	);
+
+	const registry = new FileRepositoryRegistry(registryPath);
+	const metadataStore = new FileMetadataStore(metadataPath);
+	const backend = new RipgrepLexicalSearchBackend(
+		{
+			kind: "ripgrep",
+			executable: "rg",
+			fallbackToNaiveScan: true,
+		},
+		256 * 1024,
+	);
+	const symbolIndexStore = new FileSymbolIndexStore(path.join(tempRoot, "indexes"));
+	const symbolExtractor = new TypeScriptSymbolExtractor();
+	const symbolSearchBackend = new SymbolSearchBackend(symbolIndexStore);
+	const indexCoordinator = new IndexCoordinator(
+		registry,
+		metadataStore,
+		backend,
+		symbolExtractor,
+		symbolIndexStore,
+	);
+	const sourceReader = new FileSystemSourceReader();
+	const searchService = new SearchService(
+		registry,
+		indexCoordinator,
+		backend,
+		symbolSearchBackend,
+		{
+			defaultLimit: 20,
+			maxLimit: 100,
+			maxBytesPerFile: 256 * 1024,
+		},
+	);
+
+	const handlers = createHandlers({
+		config: createTestConfig(tempRoot, registryPath, metadataPath),
+		registry,
+		metadataStore,
+		indexCoordinator,
+		searchService,
+		sourceReader,
+		logger: new Logger({ level: "error", enabled: false }),
+	});
+
+	await handlers.registerRepo({
+		name: "sample",
+		root_path: repositoryRoot,
+	});
+
+	const deleteResponse = await handlers.deleteIndex({
+		repo: "sample",
+		target: "all",
+	});
+	const deletePayload = deleteResponse.structuredContent as {
+		result: { removedLexical: boolean; removedSymbols: boolean };
+		index_status: Array<{ state: string; symbolState?: string }>;
+	};
+
+	assert.equal(deletePayload.result.removedLexical, true);
+	assert.equal(deletePayload.result.removedSymbols, true);
+	assert.equal(deletePayload.index_status[0]?.state, "not_indexed");
+	assert.equal(deletePayload.index_status[0]?.symbolState, "not_indexed");
+
+	const unregisterResponse = await handlers.unregisterRepo({
+		repo: "sample",
+		purge_metadata: true,
+	});
+	const unregisterPayload = unregisterResponse.structuredContent as {
+		result: { repositoryRemoved: boolean; removedIndexStatus: boolean };
+	};
+
+	assert.equal(unregisterPayload.result.repositoryRemoved, true);
+	assert.equal(unregisterPayload.result.removedIndexStatus, true);
+	assert.equal(await registry.getRepository("sample"), null);
+	assert.equal(await metadataStore.getIndexStatus("sample"), null);
+});
+
+test("MCP handlers surface duplicate-root warnings during register and list", async (t) => {
+	const tempRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-warning-handler-"));
+	t.after(async () => {
+		await rm(tempRoot, { recursive: true, force: true });
+	});
+	const repositoryRoot = path.join(tempRoot, "sample-repo");
+	const registryPath = path.join(tempRoot, "registry.json");
+	const metadataPath = path.join(tempRoot, "metadata.json");
+
+	await mkdir(path.join(repositoryRoot, "src"), { recursive: true });
+	await writeFile(
+		path.join(repositoryRoot, "src", "feature.ts"),
+		"export function buildAtlas() { return 'code atlas'; }\n",
+		"utf8",
+	);
+
+	const registry = new FileRepositoryRegistry(registryPath);
+	const metadataStore = new FileMetadataStore(metadataPath);
+	const backend = new RipgrepLexicalSearchBackend(
+		{
+			kind: "ripgrep",
+			executable: "rg",
+			fallbackToNaiveScan: true,
+		},
+		256 * 1024,
+	);
+	const symbolIndexStore = new FileSymbolIndexStore(path.join(tempRoot, "indexes"));
+	const indexCoordinator = new IndexCoordinator(
+		registry,
+		metadataStore,
+		backend,
+		new TypeScriptSymbolExtractor(),
+		symbolIndexStore,
+	);
+	const handlers = createHandlers({
+		config: createTestConfig(tempRoot, registryPath, metadataPath),
+		registry,
+		metadataStore,
+		indexCoordinator,
+		searchService: new SearchService(
+			registry,
+			indexCoordinator,
+			backend,
+			new SymbolSearchBackend(symbolIndexStore),
+			{
+				defaultLimit: 20,
+				maxLimit: 100,
+				maxBytesPerFile: 256 * 1024,
+			},
+		),
+		sourceReader: new FileSystemSourceReader(),
+		logger: new Logger({ level: "error", enabled: false }),
+	});
+
+	await handlers.registerRepo({
+		name: "sample-a",
+		root_path: repositoryRoot,
+	});
+	const duplicateRegister = await handlers.registerRepo({
+		name: "sample-b",
+		root_path: repositoryRoot,
+	});
+	const duplicatePayload = duplicateRegister.structuredContent as {
+		repository_warnings: Array<{ repo: string; peers: string[] }>;
+	};
+
+	assert.equal(duplicatePayload.repository_warnings.length, 1);
+	assert.equal(duplicatePayload.repository_warnings[0]?.repo, "sample-b");
+	assert.deepEqual(duplicatePayload.repository_warnings[0]?.peers, ["sample-a"]);
+
+	const listResponse = await handlers.listRepos();
+	const listPayload = listResponse.structuredContent as {
+		repository_warnings: Array<{ repo: string; peers: string[] }>;
+	};
+
+	assert.equal(listPayload.repository_warnings.length, 2);
+});
+

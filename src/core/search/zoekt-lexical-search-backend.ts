@@ -1,5 +1,5 @@
 ﻿import { execFile } from "node:child_process";
-import { mkdir, readdir, stat } from "node:fs/promises";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -209,6 +209,19 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				"zoekt_index_build_failed",
 			);
 		}
+	}
+
+	async deleteRepositoryArtifacts(repository: RepositoryRecord): Promise<void> {
+		const indexDir = getRepoIndexDir(
+			this.backendConfig.indexRoot,
+			repository.name,
+			repository.rootPath,
+		);
+		await rm(indexDir, { recursive: true, force: true });
+		this.logDebug("deleted zoekt repository artifacts", {
+			repo: repository.name,
+			indexDir,
+		});
 	}
 
 	async searchRepository(

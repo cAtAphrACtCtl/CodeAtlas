@@ -12,6 +12,7 @@ import type { Logger } from "../../core/logging/logger.js";
 import type { MetadataStore } from "../../core/metadata/metadata-store.js";
 import type { SourceReader } from "../../core/reader/source-reader.js";
 import type { RepositoryRegistry } from "../../core/registry/repository-registry.js";
+import { getRepositoryWarningsForRepo } from "../../core/registry/repository-warnings.js";
 import type { SearchService } from "../../core/search/search-service.js";
 
 export interface HandlerDependencies {
@@ -98,6 +99,9 @@ export function createHandlers(dependencies: HandlerDependencies) {
 
 				return toToolResult({
 					repositories,
+					repository_warnings: repositories.flatMap((repository) =>
+						getRepositoryWarningsForRepo(repositories, repository.name),
+					),
 					index_status: diagnosedStatuses,
 				});
 			}),
@@ -125,9 +129,14 @@ export function createHandlers(dependencies: HandlerDependencies) {
 						repository.name,
 					);
 					const diagnosedStatus = withDiagnostics(status);
+					const repositories = await dependencies.registry.listRepositories();
 
 					return toToolResult({
 						repository,
+						repository_warnings: getRepositoryWarningsForRepo(
+							repositories,
+							repository.name,
+						),
 						index_status: diagnosedStatus,
 					});
 				},
@@ -234,8 +243,14 @@ export function createHandlers(dependencies: HandlerDependencies) {
 						request.repo,
 					);
 					const diagnosedStatuses = withDiagnosticsList(statuses);
+					const repositories = await dependencies.registry.listRepositories();
 
 					return toToolResult({
+						repository_warnings: request.repo
+							? getRepositoryWarningsForRepo(repositories, request.repo)
+							: repositories.flatMap((repository) =>
+								getRepositoryWarningsForRepo(repositories, repository.name),
+							),
 						index_status: diagnosedStatuses,
 					});
 				},
@@ -258,5 +273,60 @@ export function createHandlers(dependencies: HandlerDependencies) {
 					});
 				},
 			),
+
+			unregisterRepo: async (request: {
+				repo: string;
+				purge_index?: boolean;
+				purge_metadata?: boolean;
+			}) =>
+				withRequestContext(
+					"unregister_repo",
+					{
+						repo: request.repo,
+						purgeIndex: request.purge_index,
+						purgeMetadata: request.purge_metadata,
+					},
+					async () => {
+						const result = await dependencies.indexCoordinator.unregisterRepository(
+							request.repo,
+							{
+								purgeIndex: request.purge_index,
+								purgeMetadata: request.purge_metadata,
+							},
+						);
+
+						return toToolResult({
+							repository: request.repo,
+							result,
+						});
+					},
+				),
+
+			deleteIndex: async (request: {
+				repo: string;
+				target?: "lexical" | "symbol" | "all";
+			}) =>
+				withRequestContext(
+					"delete_index",
+					{
+						repo: request.repo,
+						target: request.target,
+					},
+					async () => {
+						const result = await dependencies.indexCoordinator.deleteRepositoryIndex(
+							request.repo,
+							request.target,
+						);
+						const statuses = await dependencies.indexCoordinator.getStatus(
+							request.repo,
+						);
+						const diagnosedStatuses = withDiagnosticsList(statuses);
+
+						return toToolResult({
+							result,
+							index_status: diagnosedStatuses,
+						});
+					},
+				),
 	};
 }
