@@ -98,7 +98,7 @@ When you need a local MCP server specifically for agent-call verification, start
 npm run mcp:agent
 ```
 
-That script now defaults to `config/codeatlas.dev.json`, so it starts with debug-level structured logging enabled. The actual structured log file still comes from the config file's `logging.file.path`, unless you override it through the script parameters.
+That script defaults to `config/codeatlas.json`. In the current repository, that config already enables debug-level structured logging. The actual structured log file still comes from the config file's `logging.file.path`, unless you override it through the script parameters.
 
 Recommended verification loop:
 
@@ -115,7 +115,7 @@ If you want to verify the platform-aware default config selection, make sure `CO
 1. Run a real MCP stdio client that spawns the local server, registers the repository, and performs one symbol lookup:
 
 ```powershell
-node --input-type=module -e "import { Client } from '@modelcontextprotocol/sdk/client/index.js'; import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'; const env = { ...process.env }; delete env.CODEATLAS_CONFIG; const transport = new StdioClientTransport({ command: 'node', args: ['--import','tsx','./packages/mcp-server/src/main.ts'], cwd: process.cwd(), env }); const client = new Client({ name: 'manual-smoke-client', version: '1.0.0' }, { capabilities: {} }); await client.connect(transport); await client.callTool({ name: 'register_repo', arguments: { name: 'CodeAtlas', root_path: 'C:/git/GitHub/LukeLu/CodeAtlas', branch: 'main' } }); await client.callTool({ name: 'find_symbol', arguments: { query: 'SearchService', repos: ['CodeAtlas'], kinds: ['class'], exact: true, limit: 5 } }); await transport.close();"
+node --input-type=module -e "import { Client } from '@modelcontextprotocol/sdk/client/index.js'; import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'; const normalizedCwd = process.cwd().replace(/\\/g, '/'); const env = { ...process.env, CODEATLAS_CONFIG: normalizedCwd + '/config/codeatlas.json' }; const transport = new StdioClientTransport({ command: 'node', args: ['--import','tsx','./src/mcp-server/main.ts'], cwd: process.cwd(), env }); const client = new Client({ name: 'manual-smoke-client', version: '1.0.0' }, { capabilities: {} }); await client.connect(transport); await client.callTool({ name: 'register_repo', arguments: { name: 'CodeAtlasSmoke', root_path: normalizedCwd, branch: 'main' } }); await client.callTool({ name: 'find_symbol', arguments: { query: 'SearchService', repos: ['CodeAtlasSmoke'], kinds: ['class'], exact: true, limit: 5 } }); await transport.close();"
 ```
 
 2. Inspect the dedicated log file:

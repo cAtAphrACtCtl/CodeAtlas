@@ -1,4 +1,4 @@
-import type { LexicalBackendConfig } from "../configuration/config.js";
+import type { IndexingConfig, LexicalBackendConfig } from "../configuration/config.js";
 import type { LexicalSearchBackend } from "./lexical-search-backend.js";
 import { BootstrapRipgrepLexicalSearchBackend } from "./ripgrep-lexical-search-backend.js";
 import { ZoektLexicalSearchBackend } from "./zoekt-lexical-search-backend.js";
@@ -8,6 +8,7 @@ import { ZoektLexicalSearchBackend } from "./zoekt-lexical-search-backend.js";
 export function createLexicalSearchBackend(
 	config: LexicalBackendConfig,
 	maxBytesPerFile: number,
+	indexing?: IndexingConfig,
 ): LexicalSearchBackend {
 	if (config.kind === "zoekt") {
 		return new ZoektLexicalSearchBackend(
@@ -16,7 +17,12 @@ export function createLexicalSearchBackend(
 				config.bootstrapFallback,
 				maxBytesPerFile,
 			),
-			{ maxBytesPerFile },
+			{
+				maxBytesPerFile,
+				...(indexing?.indexBuildTimeoutMs
+					? { indexBuildTimeoutMs: indexing.indexBuildTimeoutMs }
+					: {}),
+			},
 		);
 	}
 

@@ -137,13 +137,16 @@ function createRipgrepUnavailableDiagnostics(
 function createFallbackActiveDiagnostics(
 	status: RepositoryIndexStatus,
 ): RepositoryIndexDiagnostics {
+	const activeBackend = status.activeBackend ?? status.backend;
 	return {
 		severity: "warning",
-		summary: `Configured lexical backend is ${status.configuredBackend}, but the active backend for this repository is ${status.backend}.`,
+		summary: `Configured lexical backend is ${status.configuredBackend}, but the active backend for this repository is ${activeBackend}.`,
 		impact:
 			"CodeAtlas is running in a degraded retrieval mode for this repository. Results may still be available, but they are not coming from the intended backend.",
 		causes: [
-			status.detail ?? "The active backend reported a fallback condition.",
+			status.fallbackReason ??
+			status.detail ??
+				"The active backend reported a fallback condition.",
 		],
 		remedies: [
 			"Inspect the backend detail message and restore the configured backend before treating the environment as production-ready.",
@@ -155,11 +158,18 @@ function createFallbackActiveDiagnostics(
 function createIndexingDiagnostics(
 	status: RepositoryIndexStatus,
 ): RepositoryIndexDiagnostics {
+	const activeBackend = status.activeBackend ?? status.backend;
+	const fallbackLine =
+		status.fallbackActive && activeBackend
+			? ` Lexical search remains available via ${activeBackend} while refresh is running.`
+			: "";
 	return {
 		severity: "info",
-		summary: "Repository refresh is in progress.",
+		summary: status.fallbackActive
+			? `Repository refresh is in progress, and ${activeBackend} is currently serving lexical search.`
+			: "Repository refresh is in progress.",
 		impact:
-			"Lexical and symbol data may still reflect the last completed refresh until the current refresh finishes.",
+			`Lexical and symbol data may still reflect the last completed refresh until the current refresh finishes.${fallbackLine}`,
 		causes: [status.detail ?? "Repository refresh in progress"],
 		remedies: [
 			"Wait for the current refresh to complete, then call `get_index_status` again.",
@@ -244,15 +254,16 @@ export function attachIndexStatusDiagnostics(
 			lexicalBackendConfig,
 		);
 	} else if (
-		status.reason === "configured_backend_mismatch" ||
-		status.reason === "fallback_backend_unverified"
-	) {
-		diagnostics = createFallbackActiveDiagnostics(status);
-	} else if (
 		status.reason === "refresh_in_progress" ||
 		status.state === "indexing"
 	) {
 		diagnostics = createIndexingDiagnostics(status);
+	} else if (
+		status.reason === "configured_backend_mismatch" ||
+		status.reason === "fallback_backend_unverified" ||
+		status.fallbackActive
+	) {
+		diagnostics = createFallbackActiveDiagnostics(status);
 	} else if (status.reason === "repository_stale" || status.state === "stale") {
 		diagnostics = createStaleDiagnostics(status);
 	} else if (

@@ -32,6 +32,22 @@ function createMetadataStore(
 	};
 }
 
+async function waitForCondition(
+	condition: () => boolean,
+	attempts = 20,
+	delayMs = 10,
+): Promise<void> {
+	for (let attempt = 0; attempt < attempts; attempt += 1) {
+		if (condition()) {
+			return;
+		}
+
+		await new Promise((resolve) => setTimeout(resolve, delayMs));
+	}
+
+	assert.fail("Condition was not satisfied before timeout");
+}
+
 test("IndexCoordinator refreshes repository status independently", async (t) => {
 	const tempRepoRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-repo-"));
 	t.after(async () => {
@@ -276,9 +292,14 @@ test("IndexCoordinator reindexes when stored ready metadata points to a missing 
 		new FileSymbolIndexStore(symbolRoot),
 	);
 
-	const ready = await coordinator.ensureLexicalReady(repository.name);
+	const status = await coordinator.ensureLexicalReady(repository.name);
+	await waitForCondition(
+		() => prepareCalls === 1 && statuses.get(repository.name)?.state === "ready",
+	);
+	const [ready] = await coordinator.getStatus(repository.name);
 
 	assert.equal(prepareCalls, 1);
+	assert.equal(status.state, "indexing");
 	assert.equal(ready.state, "ready");
 	assert.equal(statuses.get(repository.name)?.backend, "ripgrep");
 	assert.equal(statuses.get(repository.name)?.state, "ready");
@@ -458,8 +479,13 @@ test("IndexCoordinator refreshes when stored ready metadata was produced by a di
 		new FileSymbolIndexStore("C:/tmp/codeatlas-unused"),
 	);
 
-	const ready = await coordinator.ensureLexicalReady(repository.name);
+	const status = await coordinator.ensureLexicalReady(repository.name);
+	await waitForCondition(
+		() => prepareCalls === 1 && statuses.get(repository.name)?.state === "ready",
+	);
+	const [ready] = await coordinator.getStatus(repository.name);
 
+	assert.equal(status.state, "indexing");
 	assert.equal(prepareCalls, 1);
 	assert.equal(ready.backend, "ripgrep");
 	assert.equal(statuses.get(repository.name)?.backend, "ripgrep");

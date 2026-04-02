@@ -170,6 +170,7 @@ test("IndexCoordinator blocks lifecycle mutation while refresh is in-flight", as
 	);
 
 	const refreshPromise = coordinator.refreshRepository("sample");
+	await new Promise((resolve) => setImmediate(resolve));
 
 	await assert.rejects(
 		() => coordinator.deleteRepositoryIndex("sample", "all"),
@@ -182,4 +183,77 @@ test("IndexCoordinator blocks lifecycle mutation while refresh is in-flight", as
 		state: "ready",
 	});
 	await refreshPromise;
+});
+
+test("IndexCoordinator persists error status when background refresh throws", async (t) => {
+	const tempRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-lifecycle-fail-"));
+	t.after(async () => {
+		await rm(tempRoot, { recursive: true, force: true });
+	});
+
+	const repositoryRoot = path.join(tempRoot, "repo");
+	await mkdir(repositoryRoot, { recursive: true });
+
+	const repository = {
+		name: "sample",
+		rootPath: repositoryRoot,
+		registeredAt: new Date().toISOString(),
+	};
+	const registry: RepositoryRegistry = {
+		async listRepositories() {
+			return [repository];
+		},
+		async getRepository(name) {
+			return name === repository.name ? repository : null;
+		},
+		async registerRepository() {
+			return repository;
+		},
+	};
+	const statuses = new Map<string, RepositoryIndexStatus>();
+	const metadataStore = {
+		async listIndexStatuses() {
+			return [...statuses.values()];
+		},
+		async getIndexStatus(repo: string) {
+			return statuses.get(repo) ?? null;
+		},
+		async setIndexStatus(status: RepositoryIndexStatus) {
+			statuses.set(status.repo, status);
+		},
+	};
+	const backend: LexicalSearchBackend = {
+		kind: "mock",
+		async prepareRepository() {
+			throw new Error("boom");
+		},
+		async searchRepository() {
+			return [];
+		},
+	};
+
+	const coordinator = new IndexCoordinator(
+		registry,
+		metadataStore,
+		backend,
+		new TypeScriptSymbolExtractor(),
+		new FileSymbolIndexStore(tempRoot),
+	);
+
+	const submitted = await coordinator.submitRefresh("sample");
+	assert.equal(submitted.state, "indexing");
+
+	for (let attempt = 0; attempt < 10; attempt += 1) {
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		const status = statuses.get("sample");
+		if (status?.state === "error") {
+			assert.equal(status.reason, "refresh_failed");
+			assert.equal(status.symbolState, "not_indexed");
+			assert.match(status.detail ?? "", /Repository refresh failed: Error: boom/);
+			assert.equal(typeof status.lastRefreshDurationMs, "number");
+			return;
+		}
+	}
+
+	assert.fail("background refresh did not transition to error state");
 });

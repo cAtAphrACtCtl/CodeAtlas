@@ -101,3 +101,37 @@ test("attachIndexStatusDiagnostics explains symbol-only degradation when lexical
 	assert.match(status.diagnostics?.impact ?? "", /find_symbol/i);
 });
 
+test("attachIndexStatusDiagnostics explains fallback service during background refresh", () => {
+	const status = attachIndexStatusDiagnostics(
+		{
+			repo: "sample",
+			backend: "zoekt",
+			configuredBackend: "zoekt",
+			activeBackend: "ripgrep",
+			fallbackActive: true,
+			fallbackReason: "Repository refresh in progress; lexical search remains available via ripgrep",
+			state: "indexing",
+			reason: "refresh_in_progress",
+			symbolState: "not_indexed",
+			detail:
+				"Repository refresh in progress; lexical search remains available via ripgrep",
+		},
+		{
+			kind: "zoekt",
+			zoektIndexExecutable: "zoekt-index",
+			zoektSearchExecutable: "zoekt",
+			indexRoot: "C:/tmp/indexes/zoekt",
+			allowBootstrapFallback: true,
+			bootstrapFallback: {
+				kind: "ripgrep",
+				executable: "rg",
+				fallbackToNaiveScan: true,
+			},
+		},
+	);
+
+	assert.equal(status.diagnostics?.severity, "info");
+	assert.match(status.diagnostics?.summary ?? "", /ripgrep/i);
+	assert.match(status.diagnostics?.impact ?? "", /available via ripgrep/i);
+});
+

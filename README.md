@@ -144,7 +144,7 @@ For agent-focused local MCP verification on Windows, use the dedicated startup s
 npm run mcp:agent
 ```
 
-That command now defaults to `config/codeatlas.dev.json`, so it starts with debug-level structured logging enabled. The structured log destination still comes from that config's `logging.file.path` value unless you override the script parameters directly.
+That command defaults to `config/codeatlas.json`. In the current repository, that config already enables debug-level structured logging. The structured log destination still comes from that config's `logging.file.path` value unless you override the script parameters directly.
 
 Use this flow when you need to prove that a real MCP client request hit the local server:
 
@@ -152,13 +152,13 @@ Use this flow when you need to prove that a real MCP client request hit the loca
 2. Use a real MCP client to call `register_repo`, `find_symbol`, or `code_search`
 3. Inspect the configured JSONL log file for entries such as `"scope":"mcp"`, `"event":"mcp.request.start"`, and `"scope":"search-service"`
 
-For verbose local troubleshooting, `config/codeatlas.dev.json` is the most useful starting point because it enables debug-level structured logging.
+For verbose local troubleshooting, `config/codeatlas.json` is the most useful starting point because it already enables debug-level structured logging in this repository.
 
 On Windows PowerShell, a practical local troubleshooting launch looks like this:
 
 ```powershell
-$env:CODEATLAS_CONFIG='C:\git\GitHub\LukeLu\CodeAtlas\config\codeatlas.dev.json'
-node --import tsx .\packages\mcp-server\src\main.ts
+$env:CODEATLAS_CONFIG = (Resolve-Path .\config\codeatlas.json).Path
+node --import tsx .\src\mcp-server\main.ts
 ```
 
 Inspect the resulting JSONL stream with:
@@ -539,7 +539,7 @@ For a smooth local development loop in VS Code:
 
 Available development tasks:
 
-- set `logging.level` to `debug` in your active config, or use `config/codeatlas.dev.json`, to emit verbose structured diagnostics to the configured JSONL file
+- set `logging.level` to `debug` in your active config, such as `config/codeatlas.json`, to emit verbose structured diagnostics to the configured JSONL file
 - inspect the `scope` field in JSONL output to focus on layers such as `runtime`, `mcp`, `indexer`, `zoekt`, `ripgrep`, `search-service`, `symbol-search`, `symbol-extractor`, `symbol-index`, `source-reader`, `registry`, and `metadata`
 - keep `logging.includeErrorStreamTails=true` when you also want stderr and stdout tails from backend process failures
 - use `node "scripts/mcp-functional-review.mjs"` for a reusable real-MCP functional review against the current repository; it prefers Zoekt when Zoekt binaries are available in the active runtime

@@ -18,6 +18,10 @@
     "maxLimit": 100,
     "maxBytesPerFile": 262144
   },
+  "indexing": {
+    "indexBuildTimeoutMs": 1800000,
+    "symbolConcurrency": 0
+  },
   "mcp": {
     "serverName": "codeatlas",
     "serverVersion": "0.1.0"

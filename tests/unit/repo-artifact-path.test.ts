@@ -3,8 +3,12 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+	getRepoActiveDir,
+	getRepoArtifactDir,
 	getRepoBuildDir,
 	getRepoIndexDir,
+	getRepoPreviousDir,
+	getRepoStagingDir,
 	repoIdentityHash,
 	toRepoKey,
 	toSafeRepoSlug,
@@ -81,19 +85,32 @@ test("toRepoKey produces different keys for repos that sanitize to the same slug
 	assert.notEqual(a, b);
 });
 
-// --- getRepoIndexDir / getRepoBuildDir ---
+// --- repo artifact paths ---
 
 test("getRepoIndexDir returns path under repos subdirectory", () => {
 	const dir = getRepoIndexDir("/data/zoekt", "my-project", "/repos/my-project");
 	const relative = path.relative("/data/zoekt", dir);
 	assert.ok(relative.startsWith("repos"));
 	assert.ok(relative.includes("my-project"));
+	assert.equal(path.basename(dir), "active");
 });
 
-test("getRepoBuildDir returns the same path as getRepoIndexDir today", () => {
-	const indexDir = getRepoIndexDir("/data/zoekt", "repo-a", "/repos/a");
+test("repo artifact helpers resolve active, staging, and previous directories under one repo root", () => {
+	const artifactDir = getRepoArtifactDir("/data/zoekt", "repo-a", "/repos/a");
+	const activeDir = getRepoActiveDir("/data/zoekt", "repo-a", "/repos/a");
 	const buildDir = getRepoBuildDir("/data/zoekt", "repo-a", "/repos/a");
-	assert.equal(indexDir, buildDir);
+	const stagingDir = getRepoStagingDir("/data/zoekt", "repo-a", "/repos/a");
+	const previousDir = getRepoPreviousDir("/data/zoekt", "repo-a", "/repos/a");
+
+	assert.equal(activeDir, getRepoIndexDir("/data/zoekt", "repo-a", "/repos/a"));
+	assert.equal(buildDir, stagingDir);
+	assert.equal(path.dirname(activeDir), artifactDir);
+	assert.equal(path.dirname(stagingDir), artifactDir);
+	assert.equal(path.dirname(previousDir), artifactDir);
+	assert.equal(path.basename(activeDir), "active");
+	assert.equal(path.basename(stagingDir), "staging");
+	assert.equal(path.basename(previousDir), "previous");
+	assert.ok(path.basename(artifactDir).startsWith("repo-a-"));
 });
 
 test("different repos get different directories under the same shared root", () => {

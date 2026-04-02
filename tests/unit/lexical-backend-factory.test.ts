@@ -1,9 +1,14 @@
 ﻿import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import {
+	getRepoArtifactDir,
+	getRepoBuildDir,
+	getRepoIndexDir,
+} from "../../src/core/indexer/repo-artifact-path.js";
 import { createLexicalSearchBackend } from "../../src/core/search/create-lexical-search-backend.js";
 import { BootstrapRipgrepLexicalSearchBackend } from "../../src/core/search/ripgrep-lexical-search-backend.js";
 import { ZoektLexicalSearchBackend } from "../../src/core/search/zoekt-lexical-search-backend.js";
@@ -72,6 +77,10 @@ test("ZoektLexicalSearchBackend uses separate timeouts for availability checks a
 			indexBuildTimeoutMs: 50,
 			execFile: async (_file, args, options) => {
 				calls.push({ args, timeout: options.timeout });
+				if (args[0] === "-file_limit") {
+					const buildDir = args[5];
+					await writeFile(path.join(buildDir, "repo.zoekt"), "placeholder", "utf8");
+				}
 				return { stdout: "", stderr: "" };
 			},
 		},
@@ -99,16 +108,257 @@ test("ZoektLexicalSearchBackend uses separate timeouts for availability checks a
 		"-ignore_dirs",
 		".git,node_modules,dist,data,.next",
 	]);
+	const activeDir = getRepoIndexDir(
+		path.join(repositoryRoot, "indexes"),
+		"sample",
+		repositoryRoot,
+	);
+	const stagingDir = getRepoBuildDir(
+		path.join(repositoryRoot, "indexes"),
+		"sample",
+		repositoryRoot,
+	);
+	assert.equal(path.basename(activeDir), "active");
+	assert.equal(path.basename(stagingDir), "staging");
 });
 
-test("ZoektLexicalSearchBackend uses a dedicated timeout for search after availability succeeds", async () => {
+test("ZoektLexicalSearchBackend promotes staged build output into the active index directory", async (t) => {
+	const repositoryRoot = await mkdtemp(
+		path.join(os.tmpdir(), "codeatlas-zoekt-promote-"),
+	);
+	const indexRoot = await mkdtemp(
+		path.join(os.tmpdir(), "codeatlas-zoekt-promote-index-"),
+	);
+	t.after(async () => {
+		await rm(repositoryRoot, { recursive: true, force: true });
+		await rm(indexRoot, { recursive: true, force: true });
+	});
+	await mkdir(path.join(repositoryRoot, "src"), { recursive: true });
+
+	const backend = new ZoektLexicalSearchBackend(
+		{
+			kind: "zoekt",
+			zoektIndexExecutable: "zoekt-index",
+			zoektSearchExecutable: "zoekt-search",
+			indexRoot,
+			allowBootstrapFallback: false,
+			bootstrapFallback: {
+				kind: "ripgrep",
+				executable: "rg",
+				fallbackToNaiveScan: true,
+			},
+		},
+		undefined,
+		{
+			execFile: async (_file, args) => {
+				if (args[0] === "-file_limit") {
+					const buildDir = args[5];
+					await writeFile(path.join(buildDir, "repo.zoekt"), "placeholder", "utf8");
+				}
+				return { stdout: "", stderr: "" };
+			},
+		},
+	);
+
+	const status = await backend.prepareRepository({
+		name: "sample",
+		rootPath: repositoryRoot,
+		registeredAt: new Date().toISOString(),
+	});
+
+	const activeDir = getRepoIndexDir(indexRoot, "sample", repositoryRoot);
+	const stagingDir = getRepoBuildDir(indexRoot, "sample", repositoryRoot);
+	const artifactDir = getRepoArtifactDir(indexRoot, "sample", repositoryRoot);
+	const artifactEntries = await readdir(artifactDir, { withFileTypes: true });
+
+	assert.equal(status.state, "ready");
+	assert.match(status.detail ?? "", /active/);
+	assert.equal(artifactEntries.some((entry) => entry.name === "active"), true);
+	assert.equal(artifactEntries.some((entry) => entry.name === "staging"), false);
+	assert.equal(artifactEntries.some((entry) => entry.name === "previous"), false);
+	assert.equal((await readdir(activeDir)).includes("repo.zoekt"), true);
+	await assert.rejects(() => readdir(stagingDir));
+});
+
+test("ZoektLexicalSearchBackend preserves the active index when a rebuild fails", async (t) => {
+	const repositoryRoot = await mkdtemp(
+		path.join(os.tmpdir(), "codeatlas-zoekt-preserve-active-"),
+	);
+	const indexRoot = await mkdtemp(
+		path.join(os.tmpdir(), "codeatlas-zoekt-preserve-active-index-"),
+	);
+	t.after(async () => {
+		await rm(repositoryRoot, { recursive: true, force: true });
+		await rm(indexRoot, { recursive: true, force: true });
+	});
+	await mkdir(path.join(repositoryRoot, "src"), { recursive: true });
+
+	const activeDir = getRepoIndexDir(indexRoot, "sample", repositoryRoot);
+	await mkdir(activeDir, { recursive: true });
+	await writeFile(path.join(activeDir, "repo.zoekt"), "active-shard", "utf8");
+
+	const backend = new ZoektLexicalSearchBackend(
+		{
+			kind: "zoekt",
+			zoektIndexExecutable: "zoekt-index",
+			zoektSearchExecutable: "zoekt-search",
+			indexRoot,
+			allowBootstrapFallback: false,
+			bootstrapFallback: {
+				kind: "ripgrep",
+				executable: "rg",
+				fallbackToNaiveScan: true,
+			},
+		},
+		undefined,
+		{
+			execFile: async (_file, args) => {
+				if (args[0] === "-file_limit") {
+					throw new Error("simulated build failure");
+				}
+
+				return { stdout: "", stderr: "" };
+			},
+		},
+	);
+
+	const status = await backend.prepareRepository({
+		name: "sample",
+		rootPath: repositoryRoot,
+		registeredAt: new Date().toISOString(),
+	});
+
+	assert.equal(status.state, "error");
+	assert.equal((await readdir(activeDir)).includes("repo.zoekt"), true);
+	assert.equal(
+		await readFile(path.join(activeDir, "repo.zoekt"), "utf8"),
+		"active-shard",
+	);
+});
+
+test("ZoektLexicalSearchBackend verifyRepositoryReady inspects only the active index directory", async (t) => {
+	const repositoryRoot = await mkdtemp(
+		path.join(os.tmpdir(), "codeatlas-zoekt-active-ready-"),
+	);
+	const indexRoot = await mkdtemp(
+		path.join(os.tmpdir(), "codeatlas-zoekt-active-ready-index-"),
+	);
+	t.after(async () => {
+		await rm(repositoryRoot, { recursive: true, force: true });
+		await rm(indexRoot, { recursive: true, force: true });
+	});
+
+	const stagingDir = getRepoBuildDir(indexRoot, "sample", repositoryRoot);
+	await mkdir(stagingDir, { recursive: true });
+	await writeFile(path.join(stagingDir, "repo.zoekt"), "staging-shard", "utf8");
+
+	const backend = new ZoektLexicalSearchBackend(
+		{
+			kind: "zoekt",
+			zoektIndexExecutable: "zoekt-index",
+			zoektSearchExecutable: "zoekt-search",
+			indexRoot,
+			allowBootstrapFallback: false,
+			bootstrapFallback: {
+				kind: "ripgrep",
+				executable: "rg",
+				fallbackToNaiveScan: true,
+			},
+		},
+		undefined,
+		{
+			execFile: async () => ({ stdout: "", stderr: "" }),
+		},
+	);
+
+	const ready = await backend.verifyRepositoryReady(
+		{
+			name: "sample",
+			rootPath: repositoryRoot,
+			registeredAt: new Date().toISOString(),
+		},
+		{
+			repo: "sample",
+			backend: "zoekt",
+			configuredBackend: "zoekt",
+			state: "ready",
+			symbolState: "ready",
+			lastIndexedAt: new Date().toISOString(),
+			symbolLastIndexedAt: new Date().toISOString(),
+		},
+	);
+
+	assert.deepEqual(ready, {
+		ready: false,
+		state: "stale",
+		reason: "zoekt_index_missing",
+		detail: `Zoekt index directory is missing for repository sample: ${getRepoIndexDir(indexRoot, "sample", repositoryRoot)}`,
+	});
+});
+
+test("ZoektLexicalSearchBackend deleteRepositoryArtifacts removes the full repo artifact root", async (t) => {
+	const repositoryRoot = await mkdtemp(
+		path.join(os.tmpdir(), "codeatlas-zoekt-delete-"),
+	);
+	const indexRoot = await mkdtemp(
+		path.join(os.tmpdir(), "codeatlas-zoekt-delete-index-"),
+	);
+	t.after(async () => {
+		await rm(repositoryRoot, { recursive: true, force: true });
+		await rm(indexRoot, { recursive: true, force: true });
+	});
+
+	const activeDir = getRepoIndexDir(indexRoot, "sample", repositoryRoot);
+	const stagingDir = getRepoBuildDir(indexRoot, "sample", repositoryRoot);
+	await mkdir(activeDir, { recursive: true });
+	await mkdir(stagingDir, { recursive: true });
+	await writeFile(path.join(activeDir, "repo.zoekt"), "active", "utf8");
+	await writeFile(path.join(stagingDir, "repo.zoekt"), "staging", "utf8");
+
+	const backend = new ZoektLexicalSearchBackend({
+		kind: "zoekt",
+		zoektIndexExecutable: "zoekt-index",
+		zoektSearchExecutable: "zoekt-search",
+		indexRoot,
+		allowBootstrapFallback: false,
+		bootstrapFallback: {
+			kind: "ripgrep",
+			executable: "rg",
+			fallbackToNaiveScan: true,
+		},
+	});
+
+	await backend.deleteRepositoryArtifacts({
+		name: "sample",
+		rootPath: repositoryRoot,
+		registeredAt: new Date().toISOString(),
+	});
+
+	await assert.rejects(() => readdir(getRepoArtifactDir(indexRoot, "sample", repositoryRoot)));
+});
+
+test("ZoektLexicalSearchBackend uses a dedicated timeout for search after availability succeeds", async (t) => {
+	const repositoryRoot = await mkdtemp(
+		path.join(os.tmpdir(), "codeatlas-zoekt-search-timeout-"),
+	);
+	const indexRoot = await mkdtemp(
+		path.join(os.tmpdir(), "codeatlas-zoekt-search-index-"),
+	);
+	t.after(async () => {
+		await rm(repositoryRoot, { recursive: true, force: true });
+		await rm(indexRoot, { recursive: true, force: true });
+	});
+	const indexDir = getRepoIndexDir(indexRoot, "sample", repositoryRoot);
+	await mkdir(indexDir, { recursive: true });
+	await writeFile(path.join(indexDir, "repo.zoekt"), "placeholder", "utf8");
+
 	const calls: Array<{ args: string[]; timeout: number | undefined }> = [];
 	const backend = new ZoektLexicalSearchBackend(
 		{
 			kind: "zoekt",
 			zoektIndexExecutable: "zoekt-index",
 			zoektSearchExecutable: "zoekt-search",
-			indexRoot: "C:/indexes/zoekt",
+			indexRoot,
 			allowBootstrapFallback: false,
 			bootstrapFallback: {
 				kind: "ripgrep",
@@ -137,7 +387,7 @@ test("ZoektLexicalSearchBackend uses a dedicated timeout for search after availa
 	const hits = await backend.searchRepository(
 		{
 			name: "sample",
-			rootPath: process.cwd(),
+			rootPath: repositoryRoot,
 			registeredAt: new Date().toISOString(),
 		},
 		{
@@ -158,15 +408,27 @@ test("ZoektLexicalSearchBackend uses a dedicated timeout for search after availa
 	);
 });
 
-test("ZoektLexicalSearchBackend normalizes absolute search hit paths to repository-relative paths", async () => {
-	const repositoryRoot = process.cwd();
+test("ZoektLexicalSearchBackend normalizes absolute search hit paths to repository-relative paths", async (t) => {
+	const repositoryRoot = await mkdtemp(
+		path.join(os.tmpdir(), "codeatlas-zoekt-search-paths-"),
+	);
+	const indexRoot = await mkdtemp(
+		path.join(os.tmpdir(), "codeatlas-zoekt-search-paths-index-"),
+	);
+	t.after(async () => {
+		await rm(repositoryRoot, { recursive: true, force: true });
+		await rm(indexRoot, { recursive: true, force: true });
+	});
+	const indexDir = getRepoIndexDir(indexRoot, "sample", repositoryRoot);
+	await mkdir(indexDir, { recursive: true });
+	await writeFile(path.join(indexDir, "repo.zoekt"), "placeholder", "utf8");
 	const calls: Array<{ args: string[]; timeout: number | undefined }> = [];
 	const backend = new ZoektLexicalSearchBackend(
 		{
 			kind: "zoekt",
 			zoektIndexExecutable: "zoekt-index",
 			zoektSearchExecutable: "zoekt-search",
-			indexRoot: "C:/indexes/zoekt",
+			indexRoot,
 			allowBootstrapFallback: false,
 			bootstrapFallback: {
 				kind: "ripgrep",

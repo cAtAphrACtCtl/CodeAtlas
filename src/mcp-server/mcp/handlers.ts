@@ -44,6 +44,9 @@ export function createHandlers(dependencies: HandlerDependencies) {
 		status: Awaited<ReturnType<IndexCoordinator["refreshRepository"]>>,
 	) => attachIndexStatusDiagnostics(status, dependencies.config.lexicalBackend);
 
+	const submitRefresh = (repo: string) =>
+		dependencies.indexCoordinator.submitRefresh(repo);
+
 	const withDiagnosticsList = (
 		statuses: Awaited<ReturnType<IndexCoordinator["getStatus"]>>,
 	) =>
@@ -125,7 +128,7 @@ export function createHandlers(dependencies: HandlerDependencies) {
 						branch: request.branch,
 					});
 
-					const status = await dependencies.indexCoordinator.refreshRepository(
+					const status = await submitRefresh(
 						repository.name,
 					);
 					const diagnosedStatus = withDiagnostics(status);
@@ -263,7 +266,7 @@ export function createHandlers(dependencies: HandlerDependencies) {
 					repo: request.repo,
 				},
 				async () => {
-					const status = await dependencies.indexCoordinator.refreshRepository(
+					const status = await submitRefresh(
 						request.repo,
 					);
 					const diagnosedStatus = withDiagnostics(status);

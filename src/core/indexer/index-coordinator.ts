@@ -30,7 +30,10 @@ export interface UnregisterRepositoryResult {
 export class IndexCoordinator {
 	private readonly inFlightRefreshes = new Map<
 		string,
-		Promise<RepositoryIndexStatus>
+		{
+			jobId: string;
+			promise: Promise<RepositoryIndexStatus>;
+		}
 	>();
 	private readonly logger: Logger | undefined;
 
@@ -46,6 +49,57 @@ export class IndexCoordinator {
 
 	private logDebug(message: string, details?: Record<string, unknown>): void {
 		this.logger?.debug("indexer", message, { details });
+	}
+
+	private deriveActiveBackend(
+		existing?: RepositoryIndexStatus | null,
+	): string {
+		return (
+			existing?.activeBackend ??
+			existing?.backend ??
+			this.lexicalBackend.getBootstrapBackendKind?.() ??
+			this.lexicalBackend.kind
+		);
+	}
+
+	private buildFallbackDetails(
+		activeBackend: string,
+		reason?: RepositoryIndexStatus["reason"],
+		detail?: string,
+	): Pick<
+		RepositoryIndexStatus,
+		"activeBackend" | "fallbackActive" | "fallbackReason"
+	> {
+		const fallbackActive = activeBackend !== this.lexicalBackend.kind;
+		return {
+			activeBackend,
+			fallbackActive,
+			fallbackReason: fallbackActive
+				? detail ?? reason ?? "Configured backend is not currently active"
+				: undefined,
+		};
+	}
+
+	async recordLexicalSearchObservation(
+		repoName: string,
+		observation: {
+			durationMs: number;
+			backend?: string;
+		},
+	): Promise<void> {
+		const existing = await this.metadataStore.getIndexStatus(repoName);
+		if (!existing) {
+			return;
+		}
+
+		const activeBackend =
+			observation.backend ?? existing.activeBackend ?? existing.backend;
+		await this.metadataStore.setIndexStatus({
+			...existing,
+			...this.buildFallbackDetails(activeBackend, existing.reason, existing.detail),
+			lastSearchDurationMs: observation.durationMs,
+			searchBackend: activeBackend,
+		});
 	}
 
 	async ensureReady(repoName: string): Promise<RepositoryIndexStatus> {
@@ -69,13 +123,17 @@ export class IndexCoordinator {
 
 		const inFlight = this.inFlightRefreshes.get(repoName);
 		if (inFlight) {
-			this.logDebug("reusing in-flight lexical refresh", {
+			this.logDebug("returning current status while lexical refresh is in-flight", {
 				repo: repoName,
+				jobId: inFlight.jobId,
 			});
-			return inFlight;
+			return (
+				(await this.metadataStore.getIndexStatus(repoName)) ??
+				(await this.buildIndexingStatus(repoName, inFlight.jobId))
+			);
 		}
 
-		return this.refreshRepository(repoName);
+		return this.submitRefresh(repoName);
 	}
 
 	async ensureSymbolReady(repoName: string): Promise<RepositoryIndexStatus> {
@@ -98,10 +156,46 @@ export class IndexCoordinator {
 			this.logDebug("reusing in-flight symbol refresh", {
 				repo: repoName,
 			});
-			return inFlight;
+			return inFlight.promise;
 		}
 
 		return this.refreshRepository(repoName);
+	}
+
+	async submitRefresh(repoName: string): Promise<RepositoryIndexStatus> {
+		this.logDebug("submitting repository refresh", {
+			repo: repoName,
+		});
+		const existingRefresh = this.inFlightRefreshes.get(repoName);
+		if (existingRefresh) {
+			return (
+				(await this.metadataStore.getIndexStatus(repoName)) ??
+				(await this.buildIndexingStatus(repoName, existingRefresh.jobId))
+			);
+		}
+
+		const jobId = this.createRefreshJobId(repoName);
+		const indexingStatusPromise = (async () => {
+			const indexingStatus = await this.buildIndexingStatus(repoName, jobId);
+			await this.metadataStore.setIndexStatus(indexingStatus);
+			return indexingStatus;
+		})();
+		const refreshPromise = indexingStatusPromise.then((indexingStatus) =>
+			this.refreshRepositoryInternal(repoName, indexingStatus),
+		);
+		this.inFlightRefreshes.set(repoName, {
+			jobId,
+			promise: refreshPromise,
+		});
+
+		void refreshPromise.catch(() => undefined).finally(() => {
+			const current = this.inFlightRefreshes.get(repoName);
+			if (current?.jobId === jobId) {
+				this.inFlightRefreshes.delete(repoName);
+			}
+		});
+
+		return indexingStatusPromise;
 	}
 
 	async refreshRepository(repoName: string): Promise<RepositoryIndexStatus> {
@@ -113,19 +207,20 @@ export class IndexCoordinator {
 			this.logDebug("returning existing in-flight refresh", {
 				repo: repoName,
 			});
-			return existingRefresh;
+			return existingRefresh.promise;
 		}
 
-		const refreshPromise = this.refreshRepositoryInternal(repoName);
-		this.inFlightRefreshes.set(repoName, refreshPromise);
-
-		try {
-			return await refreshPromise;
-		} finally {
-			if (this.inFlightRefreshes.get(repoName) === refreshPromise) {
-				this.inFlightRefreshes.delete(repoName);
+		await this.submitRefresh(repoName);
+		const refresh = this.inFlightRefreshes.get(repoName);
+		if (!refresh) {
+			const status = await this.metadataStore.getIndexStatus(repoName);
+			if (!status) {
+				throw new CodeAtlasError(`Refresh job was not created for repository: ${repoName}`);
 			}
+			return status;
 		}
+
+		return refresh.promise;
 	}
 
 	async deleteRepositoryIndex(
@@ -168,12 +263,19 @@ export class IndexCoordinator {
 			repo: repository.name,
 			backend: existing?.backend ?? this.lexicalBackend.kind,
 			configuredBackend: existing?.configuredBackend ?? this.lexicalBackend.kind,
+			...this.buildFallbackDetails(
+				this.deriveActiveBackend(existing),
+				existing?.reason,
+				existing?.detail,
+			),
 			state: removedLexical ? "not_indexed" : (existing?.state ?? "not_indexed"),
 			symbolState: removedSymbols
 				? "not_indexed"
 				: (existing?.symbolState ?? "not_indexed"),
 			reason: undefined,
 			lastIndexedAt: removedLexical ? undefined : existing?.lastIndexedAt,
+			lastSearchDurationMs: existing?.lastSearchDurationMs,
+			searchBackend: existing?.searchBackend,
 			symbolLastIndexedAt: removedSymbols
 				? undefined
 				: existing?.symbolLastIndexedAt,
@@ -264,9 +366,16 @@ export class IndexCoordinator {
 			backend: existing?.backend ?? this.lexicalBackend.kind,
 			configuredBackend:
 				existing?.configuredBackend ?? this.lexicalBackend.kind,
+			...this.buildFallbackDetails(
+				this.deriveActiveBackend(existing),
+				existing?.reason,
+				existing?.detail,
+			),
 			state: "stale",
 			reason: "repository_stale",
 			lastIndexedAt: existing?.lastIndexedAt,
+			lastSearchDurationMs: existing?.lastSearchDurationMs,
+			searchBackend: existing?.searchBackend,
 			symbolState:
 				existing?.symbolState === "not_indexed" ||
 				existing?.symbolState === undefined
@@ -346,6 +455,11 @@ export class IndexCoordinator {
 			...existing,
 			backend: existing.backend || this.lexicalBackend.kind,
 			configuredBackend: existing.configuredBackend ?? this.lexicalBackend.kind,
+			...this.buildFallbackDetails(
+				this.deriveActiveBackend(existing),
+				readiness.reason,
+				readiness.detail ?? existing.detail,
+			),
 			state: readiness.state ?? "stale",
 			reason: readiness.reason,
 			detail: readiness.detail ?? existing.detail,
@@ -354,92 +468,206 @@ export class IndexCoordinator {
 		return null;
 	}
 
-	private async refreshRepositoryInternal(
+	private async buildIndexingStatus(
 		repoName: string,
+		jobId: string,
 	): Promise<RepositoryIndexStatus> {
-		this.logDebug("starting refreshRepositoryInternal", {
-			repo: repoName,
-		});
 		const repository = await this.registry.getRepository(repoName);
 		if (!repository) {
 			throw new CodeAtlasError(`Unknown repository: ${repoName}`);
 		}
 
 		const existing = await this.metadataStore.getIndexStatus(repoName);
-		await this.metadataStore.setIndexStatus({
+		const now = new Date().toISOString();
+		const activeBackend = this.deriveActiveBackend(existing);
+		return {
 			repo: repository.name,
 			backend: existing?.backend ?? this.lexicalBackend.kind,
 			configuredBackend: this.lexicalBackend.kind,
+			...this.buildFallbackDetails(
+				activeBackend,
+				"refresh_in_progress",
+				activeBackend === this.lexicalBackend.kind
+					? "Repository refresh in progress"
+					: `Repository refresh in progress; lexical search remains available via ${activeBackend}`,
+			),
 			state: "indexing",
 			reason: "refresh_in_progress",
+			jobId,
+			jobPhase: "building_lexical",
+			jobQueuedAt: now,
+			jobStartedAt: now,
+			jobUpdatedAt: now,
+			progressMessage: "Repository refresh in progress",
 			lastIndexedAt: existing?.lastIndexedAt,
-			symbolState: "indexing",
+			lastSearchDurationMs: existing?.lastSearchDurationMs,
+			searchBackend: existing?.searchBackend,
+			symbolState: existing?.symbolState ?? "not_indexed",
 			symbolLastIndexedAt: existing?.symbolLastIndexedAt,
 			symbolCount: existing?.symbolCount,
 			detail: "Repository refresh in progress",
+		};
+	}
+
+	private createRefreshJobId(repoName: string): string {
+		return `refresh-${repoName.toLowerCase()}-${Date.now()}`;
+	}
+
+	private async refreshRepositoryInternal(
+		repoName: string,
+		indexingStatus?: RepositoryIndexStatus,
+	): Promise<RepositoryIndexStatus> {
+		this.logDebug("starting refreshRepositoryInternal", {
+			repo: repoName,
 		});
+		const refreshStart = performance.now();
+		const repository = await this.registry.getRepository(repoName);
+		if (!repository) {
+			throw new CodeAtlasError(`Unknown repository: ${repoName}`);
+		}
+
+		const existing = await this.metadataStore.getIndexStatus(repoName);
+		const activeIndexingStatus =
+			indexingStatus ??
+			(await this.buildIndexingStatus(
+				repoName,
+				this.createRefreshJobId(repoName),
+			));
+		if (!indexingStatus) {
+			await this.metadataStore.setIndexStatus(activeIndexingStatus);
+		}
 
 		this.logDebug("stored indexing status", {
 			repo: repository.name,
 			configuredBackend: this.lexicalBackend.kind,
 		});
 
-		const lexicalStatus =
-			await this.lexicalBackend.prepareRepository(repository);
-		this.logDebug("lexical refresh completed", {
-			repo: repository.name,
-			backend: lexicalStatus.backend,
-			state: lexicalStatus.state,
-			detail: lexicalStatus.detail,
-		});
-		const indexedAt = new Date().toISOString();
-		let status: RepositoryIndexStatus = {
-			...lexicalStatus,
-			configuredBackend: this.lexicalBackend.kind,
-			symbolState: "ready",
-			symbolLastIndexedAt: indexedAt,
-			symbolCount: 0,
-		};
-
 		try {
-			const symbols = await this.symbolExtractor.extractRepository(repository);
-			await this.symbolIndexStore.setSymbols(repository.name, symbols);
-			status = {
-				...status,
-				symbolState: "ready",
-				symbolLastIndexedAt: indexedAt,
-				symbolCount: symbols.length,
-			};
-			this.logDebug("symbol extraction completed", {
+			const lexicalStatus =
+				await this.lexicalBackend.prepareRepository(repository);
+			this.logDebug("lexical refresh completed", {
 				repo: repository.name,
-				symbolCount: symbols.length,
+				backend: lexicalStatus.backend,
+				state: lexicalStatus.state,
+				detail: lexicalStatus.detail,
 			});
-		} catch (error) {
-			this.logDebug("symbol extraction failed", {
-				repo: repository.name,
-				...toErrorDetails(error),
-			});
-			status = {
-				...status,
-				symbolState: "error",
-				reason: lexicalStatus.reason ?? "symbol_index_failed",
-				symbolLastIndexedAt: indexedAt,
-				detail: lexicalStatus.detail
-					? `${lexicalStatus.detail}; symbol indexing failed: ${String(error)}`
-					: `symbol indexing failed: ${String(error)}`,
+			const indexedAt = new Date().toISOString();
+			let status: RepositoryIndexStatus = {
+				...lexicalStatus,
+				configuredBackend: this.lexicalBackend.kind,
+				...this.buildFallbackDetails(
+					lexicalStatus.activeBackend ?? lexicalStatus.backend,
+					lexicalStatus.reason,
+					lexicalStatus.detail,
+				),
+				jobId: activeIndexingStatus.jobId,
+				jobPhase: "building_symbols",
+				jobQueuedAt: activeIndexingStatus.jobQueuedAt,
+				jobStartedAt: activeIndexingStatus.jobStartedAt,
+				jobUpdatedAt: new Date().toISOString(),
+				progressMessage: "Symbol extraction in progress",
+				lastSearchDurationMs: existing?.lastSearchDurationMs,
+				searchBackend: existing?.searchBackend,
+				symbolState: "indexing",
+				symbolLastIndexedAt: existing?.symbolLastIndexedAt,
+				symbolCount: existing?.symbolCount,
 			};
-		}
 
-		await this.metadataStore.setIndexStatus(status);
-		this.logDebug("stored final repository status", {
-			repo: repository.name,
-			backend: status.backend,
-			configuredBackend: status.configuredBackend,
-			state: status.state,
-			symbolState: status.symbolState,
-			detail: status.detail,
-		});
-		return status;
+			try {
+				const symbolStart = performance.now();
+				const symbols = await this.symbolExtractor.extractRepository(repository);
+				const symbolDurationMs = Math.round(performance.now() - symbolStart);
+				await this.symbolIndexStore.setSymbols(repository.name, symbols);
+				status = {
+					...status,
+					symbolState: "ready",
+					symbolLastIndexedAt: indexedAt,
+					symbolCount: symbols.length,
+					symbolExtractionDurationMs: symbolDurationMs,
+				};
+				this.logDebug("symbol extraction completed", {
+					repo: repository.name,
+					symbolCount: symbols.length,
+					symbolExtractionDurationMs: symbolDurationMs,
+				});
+			} catch (error) {
+				this.logDebug("symbol extraction failed", {
+					repo: repository.name,
+					...toErrorDetails(error),
+				});
+				status = {
+					...status,
+					symbolState: "error",
+					reason: lexicalStatus.reason ?? "symbol_index_failed",
+					symbolLastIndexedAt: indexedAt,
+					detail: lexicalStatus.detail
+						? `${lexicalStatus.detail}; symbol indexing failed: ${String(error)}`
+						: `symbol indexing failed: ${String(error)}`,
+				};
+			}
+
+			const refreshDurationMs = Math.round(performance.now() - refreshStart);
+			status = {
+				...status,
+				jobId: undefined,
+				jobPhase: undefined,
+				jobQueuedAt: undefined,
+				jobStartedAt: undefined,
+				jobUpdatedAt: undefined,
+				progressMessage: undefined,
+				lastRefreshDurationMs: refreshDurationMs,
+			};
+
+			await this.metadataStore.setIndexStatus(status);
+			this.logger?.info("indexer", "repository refresh completed", {
+				event: "index.refresh.complete",
+				repo: repository.name,
+				durationMs: refreshDurationMs,
+				details: {
+					backend: status.backend,
+					configuredBackend: status.configuredBackend,
+					state: status.state,
+					symbolState: status.symbolState,
+					zoektBuildDurationMs: status.zoektBuildDurationMs,
+					symbolExtractionDurationMs: status.symbolExtractionDurationMs,
+				},
+			});
+			this.logDebug("stored final repository status", {
+				repo: repository.name,
+				backend: status.backend,
+				configuredBackend: status.configuredBackend,
+				state: status.state,
+				symbolState: status.symbolState,
+				detail: status.detail,
+			});
+			return status;
+		} catch (error) {
+			const failedStatus: RepositoryIndexStatus = {
+				...activeIndexingStatus,
+				...this.buildFallbackDetails(
+					activeIndexingStatus.activeBackend ??
+						this.deriveActiveBackend(existing),
+					"refresh_failed",
+					`Repository refresh failed: ${String(error)}`,
+				),
+				state: "error",
+				reason: "refresh_failed",
+				symbolState: existing?.symbolState ?? "error",
+				symbolLastIndexedAt: existing?.symbolLastIndexedAt,
+				symbolCount: existing?.symbolCount,
+				jobUpdatedAt: new Date().toISOString(),
+				detail: `Repository refresh failed: ${String(error)}`,
+				lastRefreshDurationMs: Math.round(performance.now() - refreshStart),
+			};
+			await this.metadataStore.setIndexStatus(failedStatus);
+			this.logger?.error("indexer", "repository refresh failed", {
+				event: "index.refresh.failed",
+				repo: repository.name,
+				durationMs: failedStatus.lastRefreshDurationMs,
+				error: toErrorDetails(error),
+			});
+			throw error;
+		}
 	}
 
 	async getStatus(repoName?: string): Promise<RepositoryIndexStatus[]> {
@@ -457,6 +685,7 @@ export class IndexCoordinator {
 					repo: repoName,
 					backend: this.lexicalBackend.kind,
 					configuredBackend: this.lexicalBackend.kind,
+					...this.buildFallbackDetails(this.lexicalBackend.kind),
 					state: "not_indexed",
 					symbolState: "not_indexed",
 				},
@@ -473,6 +702,7 @@ export class IndexCoordinator {
 					repo: repository.name,
 					backend: this.lexicalBackend.kind,
 					configuredBackend: this.lexicalBackend.kind,
+					...this.buildFallbackDetails(this.lexicalBackend.kind),
 					state: "not_indexed",
 					symbolState: "not_indexed",
 				}

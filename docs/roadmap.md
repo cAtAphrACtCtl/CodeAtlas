@@ -148,6 +148,7 @@ Planned work:
 - contract and relevance regression checks for Zoekt-first workflows
 - more explicit user-visible diagnostics for ready, stale, partial, and error states
 - decision records for Zoekt-first workflows versus optional custom symbol indexing
+- detailed large-repository indexing design and phased implementation plan captured in `docs/large-repository-indexing-design.md`
 
 Exit criteria:
 

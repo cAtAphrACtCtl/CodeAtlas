@@ -150,3 +150,68 @@ test("ConfigurationService prefers the WSL or Linux example config on non-Window
 	);
 });
 
+test("defaultConfig includes indexing section with defaults", () => {
+	const config = defaultConfig();
+	assert.deepEqual(config.indexing, {
+		indexBuildTimeoutMs: 120_000,
+		symbolConcurrency: 0,
+	});
+});
+
+test("loadConfig merges indexing settings from config file", async (t) => {
+	const tempDir = await mkdtemp(path.join(os.tmpdir(), "codeatlas-config-"));
+	t.after(async () => {
+		await rm(tempDir, { recursive: true, force: true });
+	});
+
+	const configPath = path.join(tempDir, "codeatlas.json");
+	await writeFile(
+		configPath,
+		JSON.stringify({
+			indexing: {
+				indexBuildTimeoutMs: 1800000,
+				symbolConcurrency: 4,
+			},
+		}),
+		"utf8",
+	);
+
+	const config = await loadConfig(configPath, tempDir);
+	assert.equal(config.indexing.indexBuildTimeoutMs, 1800000);
+	assert.equal(config.indexing.symbolConcurrency, 4);
+});
+
+test("loadConfig uses default indexing settings when not specified", async (t) => {
+	const tempDir = await mkdtemp(path.join(os.tmpdir(), "codeatlas-config-"));
+	t.after(async () => {
+		await rm(tempDir, { recursive: true, force: true });
+	});
+
+	const configPath = path.join(tempDir, "codeatlas.json");
+	await writeFile(configPath, JSON.stringify({}), "utf8");
+
+	const config = await loadConfig(configPath, tempDir);
+	assert.equal(config.indexing.indexBuildTimeoutMs, 120_000);
+	assert.equal(config.indexing.symbolConcurrency, 0);
+});
+
+test("loadConfig allows partial indexing override", async (t) => {
+	const tempDir = await mkdtemp(path.join(os.tmpdir(), "codeatlas-config-"));
+	t.after(async () => {
+		await rm(tempDir, { recursive: true, force: true });
+	});
+
+	const configPath = path.join(tempDir, "codeatlas.json");
+	await writeFile(
+		configPath,
+		JSON.stringify({
+			indexing: { indexBuildTimeoutMs: 600000 },
+		}),
+		"utf8",
+	);
+
+	const config = await loadConfig(configPath, tempDir);
+	assert.equal(config.indexing.indexBuildTimeoutMs, 600000);
+	assert.equal(config.indexing.symbolConcurrency, 0);
+});
+

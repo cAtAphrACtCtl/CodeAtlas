@@ -71,13 +71,22 @@ export async function createCodeAtlasServices(
 		},
 	});
 	const discoveryService = new RepositoryDiscoveryService();
-	const registry = new FileRepositoryRegistry(config.registryPath);
+	const registry = new FileRepositoryRegistry(config.registryPath, {
+		lexicalIndexRoot:
+			config.lexicalBackend.kind === "zoekt"
+				? config.lexicalBackend.indexRoot
+				: undefined,
+		symbolIndexRoot: config.indexRoot,
+	});
 	const metadataStore = new FileMetadataStore(config.metadataPath);
 	const lexicalBackend = createLexicalSearchBackend(
 		config.lexicalBackend,
 		config.search.maxBytesPerFile,
+		config.indexing,
 	);
-	const symbolExtractor = new TypeScriptSymbolExtractor();
+	const symbolExtractor = new TypeScriptSymbolExtractor({
+		concurrency: config.indexing.symbolConcurrency,
+	});
 	const symbolIndexStore = new FileSymbolIndexStore(config.indexRoot);
 	const symbolSearchBackend = new SymbolSearchBackend(symbolIndexStore);
 	const indexCoordinator = new IndexCoordinator(

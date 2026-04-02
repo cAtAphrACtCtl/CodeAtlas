@@ -26,6 +26,7 @@ export interface BackendRepositoryReadiness {
 
 export interface LexicalSearchBackend {
 	readonly kind: string;
+	getBootstrapBackendKind?(): string | undefined;
 	prepareRepository(
 		repository: RepositoryRecord,
 	): Promise<RepositoryIndexStatus>;

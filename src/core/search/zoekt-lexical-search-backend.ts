@@ -1,13 +1,15 @@
 ﻿import { execFile } from "node:child_process";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import { toErrorDetails } from "../common/debug.js";
 import type { ZoektLexicalBackendConfig } from "../configuration/config.js";
 import {
+	getRepoArtifactDir,
 	getRepoBuildDir,
 	getRepoIndexDir,
+	getRepoPreviousDir,
 } from "../indexer/repo-artifact-path.js";
 import type { RepositoryIndexStatus } from "../metadata/metadata-store.js";
 import type { RepositoryRecord } from "../registry/repository-registry.js";
@@ -119,6 +121,14 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 		this.logger?.debug("zoekt", message, { details });
 	}
 
+	getBootstrapBackendKind(): string | undefined {
+		if (!this.backendConfig.allowBootstrapFallback) {
+			return undefined;
+		}
+
+		return this.bootstrapBackend?.kind;
+	}
+
 	async prepareRepository(
 		repository: RepositoryRecord,
 	): Promise<RepositoryIndexStatus> {
@@ -154,16 +164,29 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				repository.name,
 				repository.rootPath,
 			);
+			const activeDir = getRepoIndexDir(
+				this.backendConfig.indexRoot,
+				repository.name,
+				repository.rootPath,
+			);
+			const previousDir = getRepoPreviousDir(
+				this.backendConfig.indexRoot,
+				repository.name,
+				repository.rootPath,
+			);
 			this.logDebug("starting zoekt prepareRepository", {
 				repo: repository.name,
 				executable: this.backendConfig.zoektIndexExecutable,
 				buildDir,
+				activeDir,
 				rootPath: repository.rootPath,
 				timeoutMs: this.runtime.indexBuildTimeoutMs,
 				maxBytesPerFile: this.runtime.maxBytesPerFile,
 				ignoredDirectories: skippedDirectories,
 			});
+			await rm(buildDir, { recursive: true, force: true });
 			await mkdir(buildDir, { recursive: true });
+			const buildStart = performance.now();
 			await this.runtime.execFile(
 				this.backendConfig.zoektIndexExecutable,
 				[
@@ -181,28 +204,58 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 					timeout: this.runtime.indexBuildTimeoutMs,
 				},
 			);
+			const buildDurationMs = Math.round(performance.now() - buildStart);
+			const validationStart = performance.now();
+			await this.validateStagingDir(repository, buildDir);
+			const validationDurationMs = Math.round(performance.now() - validationStart);
+			this.logger?.info("zoekt", "zoekt staging validation completed", {
+				event: "index.zoekt_staging_validation.complete",
+				repo: repository.name,
+				durationMs: validationDurationMs,
+			});
+			const promotionStart = performance.now();
+			await this.promoteStagingToActive(repository, buildDir, activeDir, previousDir);
+			const promotionDurationMs = Math.round(performance.now() - promotionStart);
+			this.logger?.info("zoekt", "zoekt promotion completed", {
+				event: "index.zoekt_promotion.complete",
+				repo: repository.name,
+				durationMs: promotionDurationMs,
+			});
 
 			const status: RepositoryIndexStatus = {
 				repo: repository.name,
 				backend: this.kind,
 				state: "ready",
 				lastIndexedAt: new Date().toISOString(),
-				detail: `Lexical index available via Zoekt at ${buildDir}`,
+				zoektBuildDurationMs: buildDurationMs,
+				detail: `Lexical index available via Zoekt at ${activeDir}`,
 			};
 
-			this.logDebug("completed zoekt prepareRepository", {
+			this.logger?.info("zoekt", "zoekt build completed", {
+				event: "index.zoekt_build.complete",
 				repo: repository.name,
-				buildDir,
-				state: status.state,
+				durationMs: buildDurationMs,
 			});
 
 			return status;
 		} catch (error) {
+			await rm(
+				getRepoBuildDir(
+					this.backendConfig.indexRoot,
+					repository.name,
+					repository.rootPath,
+				),
+				{ recursive: true, force: true },
+			);
 			this.logDebug("zoekt prepareRepository failed", {
 				repo: repository.name,
 				...toErrorDetails(error),
 			});
 			const detail = error instanceof Error ? error.message : String(error);
+			this.logger?.warn("zoekt", "zoekt build failed", {
+				event: "index.zoekt_build.failed",
+				repo: repository.name,
+			});
 			return this.prepareWithFallback(
 				repository,
 				`Zoekt index build failed: ${detail}`,
@@ -212,15 +265,15 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 	}
 
 	async deleteRepositoryArtifacts(repository: RepositoryRecord): Promise<void> {
-		const indexDir = getRepoIndexDir(
+		const artifactDir = getRepoArtifactDir(
 			this.backendConfig.indexRoot,
 			repository.name,
 			repository.rootPath,
 		);
-		await rm(indexDir, { recursive: true, force: true });
+		await rm(artifactDir, { recursive: true, force: true });
 		this.logDebug("deleted zoekt repository artifacts", {
 			repo: repository.name,
-			indexDir,
+			indexDir: artifactDir,
 		});
 	}
 
@@ -246,6 +299,25 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				repository.name,
 				repository.rootPath,
 			);
+			const directoryStats = await stat(indexDir);
+			if (!directoryStats.isDirectory()) {
+				return this.searchWithFallback(
+					repository,
+					request,
+					`Zoekt index path is not ready for repository ${repository.name}: ${indexDir}`,
+				);
+			}
+			const entries = await readdir(indexDir, { withFileTypes: true });
+			const hasShardFiles = entries.some(
+				(entry) => entry.isFile() && entry.name.endsWith(".zoekt"),
+			);
+			if (!hasShardFiles) {
+				return this.searchWithFallback(
+					repository,
+					request,
+					`Zoekt index is not ready for repository ${repository.name}: ${indexDir}`,
+				);
+			}
 			this.logDebug("starting zoekt searchRepository", {
 				repo: repository.name,
 				executable: this.backendConfig.zoektSearchExecutable,
@@ -253,6 +325,7 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				query: request.query,
 				timeoutMs: this.runtime.searchTimeoutMs,
 			});
+			const searchStart = performance.now();
 			const { stdout } = await this.runtime.execFile(
 				this.backendConfig.zoektSearchExecutable,
 				["-index_dir", indexDir, request.query],
@@ -268,10 +341,15 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				stdout,
 				request.limit,
 			);
-			this.logDebug("completed zoekt searchRepository", {
+			const searchDurationMs = Math.round(performance.now() - searchStart);
+			this.logger?.info("zoekt", "zoekt search completed", {
+				event: "search.zoekt_exec.complete",
 				repo: repository.name,
-				query: request.query,
-				hitCount: hits.length,
+				durationMs: searchDurationMs,
+				details: {
+					query: request.query,
+					hitCount: hits.length,
+				},
 			});
 			return hits;
 		} catch (error) {
@@ -297,20 +375,39 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 		reason?: RepositoryIndexStatus["reason"];
 		detail?: string;
 	}> {
+		const readinessStart = performance.now();
 		this.logDebug("verifying zoekt repository readiness", {
 			repo: repository.name,
 			existingBackend: existingStatus?.backend,
 			existingConfiguredBackend: existingStatus?.configuredBackend,
 		});
+		const finalizeReadiness = <T extends {
+			ready: boolean;
+			state?: "stale" | "error";
+			reason?: RepositoryIndexStatus["reason"];
+			detail?: string;
+		}>(result: T): T => {
+			const durationMs = Math.round(performance.now() - readinessStart);
+			this.logger?.info("zoekt", "zoekt readiness check completed", {
+				event: "index.readiness_check.complete",
+				repo: repository.name,
+				durationMs,
+				details: {
+					ready: result.ready,
+					reason: result.reason,
+				},
+			});
+			return result;
+		};
 		const configuredBackend =
 			existingStatus?.configuredBackend ?? existingStatus?.backend;
 		if (configuredBackend && configuredBackend !== this.kind) {
-			return {
+			return finalizeReadiness({
 				ready: false,
 				state: "stale",
 				reason: "configured_backend_mismatch",
 				detail: `Stored lexical status was prepared for backend ${configuredBackend}, but active backend is ${this.kind}`,
-			};
+			});
 		}
 
 		if (existingStatus?.backend && existingStatus.backend !== this.kind) {
@@ -318,18 +415,18 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				this.backendConfig.allowBootstrapFallback &&
 				this.bootstrapBackend?.verifyRepositoryReady
 			) {
-				return this.bootstrapBackend.verifyRepositoryReady(
+				return finalizeReadiness(await this.bootstrapBackend.verifyRepositoryReady(
 					repository,
 					existingStatus,
-				);
+				));
 			}
 
-			return {
+			return finalizeReadiness({
 				ready: false,
 				state: "stale",
 				reason: "fallback_backend_unverified",
 				detail: `Stored lexical status uses fallback backend ${existingStatus.backend}, but no active readiness verifier is available for it`,
-			};
+			});
 		}
 
 		const availability = await this.getZoektAvailability();
@@ -340,12 +437,12 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 					detail: availability.detail,
 				},
 			);
-			return {
+			return finalizeReadiness({
 				ready: false,
 				state: "stale",
 				reason: availability.reason ?? "zoekt_unavailable",
 				detail: availability.detail,
-			};
+			});
 		}
 
 		const indexDir = getRepoIndexDir(
@@ -357,12 +454,12 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 		try {
 			const directoryStats = await stat(indexDir);
 			if (!directoryStats.isDirectory()) {
-				return {
+				return finalizeReadiness({
 					ready: false,
 					state: "stale",
 					reason: "zoekt_index_not_directory",
 					detail: `Zoekt index path is not a directory for repository ${repository.name}: ${indexDir}`,
-				};
+				});
 			}
 
 			const entries = await readdir(indexDir, { withFileTypes: true });
@@ -371,19 +468,19 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 			);
 
 			if (!hasShardFiles) {
-				return {
+				return finalizeReadiness({
 					ready: false,
 					state: "stale",
 					reason: "zoekt_index_no_shards",
 					detail: `Zoekt index directory has no shard files for repository ${repository.name}: ${indexDir}`,
-				};
+				});
 			}
 
 			this.logDebug("repository readiness verified", {
 				repo: repository.name,
 				indexDir,
 			});
-			return { ready: true };
+			return finalizeReadiness({ ready: true });
 		} catch (error) {
 			this.logDebug("repository readiness inspection failed", {
 				repo: repository.name,
@@ -392,20 +489,20 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 			});
 			const detail = error instanceof Error ? error.message : String(error);
 			if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
-				return {
+				return finalizeReadiness({
 					ready: false,
 					state: "stale",
 					reason: "zoekt_index_missing",
 					detail: `Zoekt index directory is missing for repository ${repository.name}: ${indexDir}`,
-				};
+				});
 			}
 
-			return {
+			return finalizeReadiness({
 				ready: false,
 				state: "error",
 				reason: "zoekt_index_inspection_failed",
 				detail: `Unable to inspect Zoekt index directory for repository ${repository.name}: ${detail}`,
-			};
+			});
 		}
 	}
 
@@ -432,7 +529,19 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 	): Promise<BackendSearchHit[]> {
 		return this.withBootstrapFallback(
 			detail,
-			() => this.bootstrapBackend!.searchRepository(repository, request),
+			async () => {
+				this.logger?.info("zoekt", "search fallback activated", {
+					event: "search.fallback.activated",
+					repo: repository.name,
+					details: {
+						query: request.query,
+						originalBackend: this.kind,
+						fallbackBackend: this.bootstrapBackend!.kind,
+						reason: detail,
+					},
+				});
+				return this.bootstrapBackend!.searchRepository(repository, request);
+			},
 			() => {
 				throw new Error(detail);
 			},
@@ -465,6 +574,70 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				detail,
 			}),
 		);
+	}
+
+	private async validateStagingDir(
+		repository: RepositoryRecord,
+		stagingDir: string,
+	): Promise<void> {
+		const directoryStats = await stat(stagingDir);
+		if (!directoryStats.isDirectory()) {
+			throw new Error(
+				`Zoekt staging path is not a directory for repository ${repository.name}: ${stagingDir}`,
+			);
+		}
+
+		const entries = await readdir(stagingDir, { withFileTypes: true });
+		const hasShardFiles = entries.some(
+			(entry) => entry.isFile() && entry.name.endsWith(".zoekt"),
+		);
+		const hasTemporaryFiles = entries.some(
+			(entry) => entry.isFile() && entry.name.endsWith(".tmp"),
+		);
+
+		if (!hasShardFiles) {
+			throw new Error(
+				`Zoekt staging directory has no shard files for repository ${repository.name}: ${stagingDir}`,
+			);
+		}
+
+		if (hasTemporaryFiles) {
+			throw new Error(
+				`Zoekt staging directory still has temporary files for repository ${repository.name}: ${stagingDir}`,
+			);
+		}
+	}
+
+	private async promoteStagingToActive(
+		repository: RepositoryRecord,
+		stagingDir: string,
+		activeDir: string,
+		previousDir: string,
+	): Promise<void> {
+		let movedActiveToPrevious = false;
+		try {
+			await rm(previousDir, { recursive: true, force: true });
+			if (await this.pathExists(activeDir)) {
+				await rename(activeDir, previousDir);
+				movedActiveToPrevious = true;
+			}
+			await rename(stagingDir, activeDir);
+			await rm(previousDir, { recursive: true, force: true });
+		} catch (error) {
+			if (movedActiveToPrevious && !(await this.pathExists(activeDir))) {
+				await rename(previousDir, activeDir).catch(() => undefined);
+			}
+			throw error;
+		}
+	}
+
+	private async pathExists(targetPath: string): Promise<boolean> {
+		try {
+			await stat(targetPath);
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
 	private parseZoektOutput(

@@ -30,6 +30,10 @@ function createTestConfig(
 			executable: "rg",
 			fallbackToNaiveScan: true,
 		},
+		indexing: {
+			indexBuildTimeoutMs: 120_000,
+			symbolConcurrency: 0,
+		},
 		search: {
 			defaultLimit: 20,
 			maxLimit: 100,
@@ -360,6 +364,18 @@ test("MCP handlers attach friendly diagnostics when configured Zoekt is unavaila
 						"Zoekt index executable not available: C:/missing/zoekt-index.exe; using bootstrap fallback: fallback ready",
 				};
 			},
+			async submitRefresh() {
+				return {
+					repo: "sample",
+					backend: "ripgrep",
+					configuredBackend: "zoekt",
+					state: "ready" as const,
+					reason: "zoekt_unavailable" as const,
+					symbolState: "ready" as const,
+					detail:
+						"Zoekt index executable not available: C:/missing/zoekt-index.exe; using bootstrap fallback: fallback ready",
+				};
+			},
 			async markRepositoryStale() {
 				throw new Error("not used");
 			},
@@ -515,6 +531,7 @@ test("MCP handlers expose unregister and delete-index lifecycle flows", async (t
 		name: "sample",
 		root_path: repositoryRoot,
 	});
+	await indexCoordinator.refreshRepository("sample");
 
 	const deleteResponse = await handlers.deleteIndex({
 		repo: "sample",
@@ -602,10 +619,12 @@ test("MCP handlers surface duplicate-root warnings during register and list", as
 		name: "sample-a",
 		root_path: repositoryRoot,
 	});
+	await indexCoordinator.refreshRepository("sample-a");
 	const duplicateRegister = await handlers.registerRepo({
 		name: "sample-b",
 		root_path: repositoryRoot,
 	});
+	await indexCoordinator.refreshRepository("sample-b");
 	const duplicatePayload = duplicateRegister.structuredContent as {
 		repository_warnings: Array<{ repo: string; peers: string[] }>;
 	};

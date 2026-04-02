@@ -48,6 +48,10 @@ export class BootstrapRipgrepLexicalSearchBackend
 		this.logger?.debug("ripgrep", message, { details });
 	}
 
+	getBootstrapBackendKind(): string | undefined {
+		return undefined;
+	}
+
 	async prepareRepository(
 		repository: RepositoryRecord,
 	): Promise<RepositoryIndexStatus> {
@@ -135,7 +139,18 @@ export class BootstrapRipgrepLexicalSearchBackend
 
 		if (rgAvailable) {
 			try {
+				const searchStart = performance.now();
 				const hits = await this.searchWithRipgrep(repository, request);
+				const searchDurationMs = Math.round(performance.now() - searchStart);
+				this.logger?.info("ripgrep", "ripgrep search completed", {
+					event: "search.ripgrep_exec.complete",
+					repo: repository.name,
+					durationMs: searchDurationMs,
+					details: {
+						query: request.query,
+						hitCount: hits.length,
+					},
+				});
 				this.logDebug("completed searchRepository with ripgrep", {
 					repo: repository.name,
 					query: request.query,
@@ -212,6 +227,9 @@ export class BootstrapRipgrepLexicalSearchBackend
 			"--line-number",
 			"--smart-case",
 			"--hidden",
+			"--no-messages",
+			"--max-count",
+			String(request.limit),
 			"--max-filesize",
 			String(this.maxBytesPerFile),
 			"--glob",

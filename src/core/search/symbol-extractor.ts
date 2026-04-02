@@ -9,6 +9,10 @@ import { getLogger, type Logger } from "../logging/logger.js";
 import type { RepositoryRecord } from "../registry/repository-registry.js";
 import { skippedDirectorySet } from "./lexical-boundaries.js";
 
+export interface TypeScriptSymbolExtractorOptions {
+	concurrency?: number;
+}
+
 const supportedExtensions = new Set([
 	".ts",
 	".tsx",
@@ -18,6 +22,12 @@ const supportedExtensions = new Set([
 	".cts",
 	".mjs",
 	".cjs",
+]);
+const symbolSkippedDirectorySet = new Set([
+	...skippedDirectorySet,
+	"bin",
+	"obj",
+	"publish",
 ]);
 
 type ExtractedSymbol = Omit<SymbolRecord, "repo">;
@@ -86,9 +96,11 @@ function pushSymbol(
 
 export class TypeScriptSymbolExtractor {
 	private readonly logger: Logger | undefined;
+	private readonly concurrency: number;
 
-	constructor() {
+	constructor(options: TypeScriptSymbolExtractorOptions = {}) {
 		this.logger = getLogger();
+		this.concurrency = Math.max(0, options.concurrency ?? 0);
 	}
 
 	private logDebug(message: string, details?: Record<string, unknown>): void {
@@ -102,23 +114,63 @@ export class TypeScriptSymbolExtractor {
 			repo: repository.name,
 			rootPath: repository.rootPath,
 		});
+		const extractStart = performance.now();
 		const files = await this.walkRepository(repository.rootPath);
-		const extracted = await Promise.all(
-			files.map((filePath) => this.extractFile(repository, filePath)),
-		);
+		const extracted = await this.mapFilesWithConcurrency(repository, files);
 
 		const symbols = extracted.flat().map((symbol) => ({
 			repo: repository.name,
 			...symbol,
 		}));
 
-		this.logDebug("completed extractRepository", {
+		const extractDurationMs = Math.round(performance.now() - extractStart);
+		this.logger?.info("symbol-extractor", "symbol extraction completed", {
+			event: "index.symbol_extraction.complete",
 			repo: repository.name,
-			fileCount: files.length,
-			symbolCount: symbols.length,
+			durationMs: extractDurationMs,
+			details: {
+				fileCount: files.length,
+				symbolCount: symbols.length,
+			},
 		});
 
 		return symbols;
+	}
+
+	private async mapFilesWithConcurrency(
+		repository: RepositoryRecord,
+		files: string[],
+	): Promise<ExtractedSymbol[][]> {
+		if (this.concurrency <= 0 || files.length <= 1) {
+			return Promise.all(
+				files.map((filePath) => this.extractFile(repository, filePath)),
+			);
+		}
+
+		const extracted = new Array<ExtractedSymbol[]>(files.length);
+		let nextIndex = 0;
+
+		const workers = Array.from(
+			{ length: Math.min(this.concurrency, files.length) },
+			async () => {
+				while (true) {
+					const currentIndex = nextIndex;
+					nextIndex += 1;
+
+					if (currentIndex >= files.length) {
+						return;
+					}
+
+					extracted[currentIndex] = await this.extractFile(
+						repository,
+						files[currentIndex],
+					);
+				}
+			},
+		);
+
+		await Promise.all(workers);
+		return extracted;
 	}
 
 	private async extractFile(
@@ -269,7 +321,7 @@ export class TypeScriptSymbolExtractor {
 			for (const entry of entries) {
 				const fullPath = path.join(currentDirectory, entry.name);
 				if (entry.isDirectory()) {
-					if (!skippedDirectorySet.has(entry.name)) {
+					if (!symbolSkippedDirectorySet.has(entry.name)) {
 						queue.push(fullPath);
 					}
 

@@ -4,7 +4,9 @@ import path from "node:path";
 import { toErrorDetails } from "../common/debug.js";
 import { CodeAtlasError } from "../common/errors.js";
 import { readJsonFile, writeJsonFile } from "../common/json-file.js";
+import { getRepoIndexDir } from "../indexer/repo-artifact-path.js";
 import { getLogger, type Logger } from "../logging/logger.js";
+import { getSymbolIndexPath } from "../search/symbol-index-store.js";
 import type {
 	RepositoryRecord,
 	RepositoryRegistration,
@@ -15,10 +17,18 @@ interface RegistryDocument {
 	repositories: RepositoryRecord[];
 }
 
+export interface FileRepositoryRegistryOptions {
+	lexicalIndexRoot?: string;
+	symbolIndexRoot?: string;
+}
+
 export class FileRepositoryRegistry implements RepositoryRegistry {
 	private readonly logger: Logger | undefined;
 
-	constructor(private readonly registryPath: string) {
+	constructor(
+		private readonly registryPath: string,
+		private readonly options: FileRepositoryRegistryOptions = {},
+	) {
 		this.logger = getLogger();
 	}
 
@@ -75,17 +85,20 @@ export class FileRepositoryRegistry implements RepositoryRegistry {
 			rootPath,
 			registeredAt: new Date().toISOString(),
 		};
+		const normalizedRecord = this.withDerivedIndexPaths(record);
 
-		document.repositories.push(record);
+		document.repositories.push(normalizedRecord);
 		await writeJsonFile(this.registryPath, document);
 
 		this.logDebug("registered repository", {
-			name: record.name,
-			rootPath: record.rootPath,
+			name: normalizedRecord.name,
+			rootPath: normalizedRecord.rootPath,
+			lexicalIndexPath: normalizedRecord.lexicalIndexPath,
+			symbolIndexPath: normalizedRecord.symbolIndexPath,
 			repositoryCount: document.repositories.length,
 		});
 
-		return record;
+		return normalizedRecord;
 	}
 
 	async unregisterRepository(name: string): Promise<RepositoryRecord | null> {
@@ -119,11 +132,15 @@ export class FileRepositoryRegistry implements RepositoryRegistry {
 			const document = await readJsonFile<RegistryDocument>(this.registryPath, {
 				repositories: [],
 			});
+			const normalizedDocument = this.normalizeDocument(document);
+			if (normalizedDocument.changed) {
+				await writeJsonFile(this.registryPath, normalizedDocument.document);
+			}
 			this.logDebug("loaded registry document", {
 				registryPath: this.registryPath,
-				repositoryCount: document.repositories.length,
+				repositoryCount: normalizedDocument.document.repositories.length,
 			});
-			return document;
+			return normalizedDocument.document;
 		} catch (error) {
 			this.logDebug("failed to read registry document", {
 				registryPath: this.registryPath,
@@ -131,5 +148,46 @@ export class FileRepositoryRegistry implements RepositoryRegistry {
 			});
 			throw error;
 		}
+	}
+
+	private normalizeDocument(document: RegistryDocument): {
+		document: RegistryDocument;
+		changed: boolean;
+	} {
+		let changed = false;
+		const repositories = document.repositories.map((repository) => {
+			const normalized = this.withDerivedIndexPaths(repository);
+			if (
+				normalized.lexicalIndexPath !== repository.lexicalIndexPath ||
+				normalized.symbolIndexPath !== repository.symbolIndexPath
+			) {
+				changed = true;
+			}
+			return normalized;
+		});
+
+		return {
+			document: changed ? { repositories } : document,
+			changed,
+		};
+	}
+
+	private withDerivedIndexPaths(repository: RepositoryRecord): RepositoryRecord {
+		const lexicalIndexPath = this.options.lexicalIndexRoot
+			? getRepoIndexDir(
+				this.options.lexicalIndexRoot,
+				repository.name,
+				repository.rootPath,
+			)
+			: undefined;
+		const symbolIndexPath = this.options.symbolIndexRoot
+			? getSymbolIndexPath(this.options.symbolIndexRoot, repository.name)
+			: undefined;
+
+		return {
+			...repository,
+			lexicalIndexPath,
+			symbolIndexPath,
+		};
 	}
 }

@@ -7,6 +7,7 @@ export type IndexState =
 
 export type IndexStatusReason =
 	| "refresh_in_progress"
+	| "refresh_failed"
 	| "repository_stale"
 	| "repository_root_not_directory"
 	| "ripgrep_unavailable"
@@ -26,13 +27,29 @@ export interface RepositoryIndexStatus {
 	repo: string;
 	backend: string;
 	configuredBackend?: string;
+	activeBackend?: string;
+	fallbackActive?: boolean;
+	fallbackReason?: string;
 	state: IndexState;
 	reason?: IndexStatusReason;
+	jobId?: string;
+	jobPhase?: "queued" | "building_lexical" | "building_symbols";
+	jobQueuedAt?: string;
+	jobStartedAt?: string;
+	jobUpdatedAt?: string;
+	progressMessage?: string;
 	lastIndexedAt?: string;
 	symbolState?: IndexState;
 	symbolLastIndexedAt?: string;
 	symbolCount?: number;
 	detail?: string;
+
+	// Performance timing fields (populated after refresh completes)
+	lastRefreshDurationMs?: number;
+	zoektBuildDurationMs?: number;
+	symbolExtractionDurationMs?: number;
+	lastSearchDurationMs?: number;
+	searchBackend?: string;
 }
 
 export interface MetadataStore {

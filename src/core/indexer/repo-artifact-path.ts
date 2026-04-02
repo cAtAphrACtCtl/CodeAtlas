@@ -46,16 +46,7 @@ export function toRepoKey(repoName: string, rootPath: string): string {
 	return `${slug}-${hash}`;
 }
 
-/**
- * Resolve the per-repository artifact directory under a shared root.
- *
- * Layout: `<sharedRoot>/repos/<repoKey>/`
- *
- * Both `getRepoIndexDir` and `getRepoBuildDir` return the same path today.
- * They are separated as named entry points so that callers express intent
- * and a future active/staging split does not require call-site changes.
- */
-export function getRepoIndexDir(
+export function getRepoArtifactDir(
 	sharedRoot: string,
 	repoName: string,
 	rootPath: string,
@@ -63,11 +54,48 @@ export function getRepoIndexDir(
 	return path.join(sharedRoot, "repos", toRepoKey(repoName, rootPath));
 }
 
-/** Alias for `getRepoIndexDir` — today they are identical. */
+export function getRepoActiveDir(
+	sharedRoot: string,
+	repoName: string,
+	rootPath: string,
+): string {
+	return path.join(getRepoArtifactDir(sharedRoot, repoName, rootPath), "active");
+}
+
+export function getRepoStagingDir(
+	sharedRoot: string,
+	repoName: string,
+	rootPath: string,
+): string {
+	return path.join(getRepoArtifactDir(sharedRoot, repoName, rootPath), "staging");
+}
+
+export function getRepoPreviousDir(
+	sharedRoot: string,
+	repoName: string,
+	rootPath: string,
+): string {
+	return path.join(getRepoArtifactDir(sharedRoot, repoName, rootPath), "previous");
+}
+
+/**
+ * Resolve the per-repository artifact directory under a shared root.
+ *
+ * Layout: `<sharedRoot>/repos/<repoKey>/active/`
+ */
+export function getRepoIndexDir(
+	sharedRoot: string,
+	repoName: string,
+	rootPath: string,
+): string {
+	return getRepoActiveDir(sharedRoot, repoName, rootPath);
+}
+
+/** Build output goes to staging until promotion succeeds. */
 export function getRepoBuildDir(
 	sharedRoot: string,
 	repoName: string,
 	rootPath: string,
 ): string {
-	return getRepoIndexDir(sharedRoot, repoName, rootPath);
+	return getRepoStagingDir(sharedRoot, repoName, rootPath);
 }

@@ -59,6 +59,7 @@ test("SearchService returns lexical results using the stable result contract", a
 		async getStatus() {
 			return [];
 		},
+		async recordLexicalSearchObservation() {},
 	} as unknown as IndexCoordinator;
 
 	const backend: LexicalSearchBackend = {
@@ -113,6 +114,118 @@ test("SearchService returns lexical results using the stable result contract", a
 		score: 99,
 		source_type: "lexical",
 	});
+});
+
+test("SearchService records lexical search metrics using the active backend from readiness status", async () => {
+	const repository = {
+		name: "alpha",
+		rootPath: "C:/repos/alpha",
+		registeredAt: new Date().toISOString(),
+	};
+
+	const registry: RepositoryRegistry = {
+		async listRepositories() {
+			return [repository];
+		},
+		async getRepository(name) {
+			return name === repository.name ? repository : null;
+		},
+		async registerRepository() {
+			return repository;
+		},
+	};
+
+	const observations: Array<{ repoName: string; durationMs: number; backend?: string }> = [];
+	const indexCoordinator: IndexCoordinator = {
+		async ensureReady() {
+			return {
+				repo: repository.name,
+				backend: "zoekt",
+				activeBackend: "ripgrep",
+				fallbackActive: true,
+				state: "indexing",
+				symbolState: "not_indexed",
+			};
+		},
+		async ensureLexicalReady() {
+			return {
+				repo: repository.name,
+				backend: "zoekt",
+				activeBackend: "ripgrep",
+				fallbackActive: true,
+				state: "indexing",
+				symbolState: "not_indexed",
+			};
+		},
+		async ensureSymbolReady() {
+			return {
+				repo: repository.name,
+				backend: "zoekt",
+				state: "ready",
+				symbolState: "ready",
+			};
+		},
+		async refreshRepository() {
+			return {
+				repo: repository.name,
+				backend: "zoekt",
+				state: "ready",
+			};
+		},
+		async getStatus() {
+			return [];
+		},
+		async recordLexicalSearchObservation(repoName, observation) {
+			observations.push({ repoName, ...observation });
+		},
+	} as unknown as IndexCoordinator;
+
+	const backend: LexicalSearchBackend = {
+		kind: "zoekt",
+		async prepareRepository() {
+			return {
+				repo: repository.name,
+				backend: "zoekt",
+				state: "ready",
+			};
+		},
+		async searchRepository() {
+			return [
+				{
+					path: "src/example.ts",
+					startLine: 10,
+					endLine: 10,
+					snippet: "MockCargoWiseClientServices",
+					score: 99,
+				},
+			];
+		},
+	};
+
+	const service = new SearchService(
+		registry,
+		indexCoordinator,
+		backend,
+		new SymbolSearchBackend({
+			async getSymbols() {
+				return [];
+			},
+			async setSymbols() {},
+		}),
+		{
+			defaultLimit: 20,
+			maxLimit: 100,
+			maxBytesPerFile: 256 * 1024,
+		},
+	);
+
+	await service.searchLexical({ query: "MockCargoWiseClientServices" });
+
+	assert.equal(observations.length, 1);
+	assert.equal(observations[0]?.repoName, "alpha");
+	assert.equal(observations[0]?.backend, "ripgrep");
+	assert.equal(typeof observations[0]?.durationMs, "number");
+	assert.ok((observations[0]?.durationMs ?? -1) >= 0);
 });
 
 test("SearchService reserves semantic and hybrid contracts with TODO markers", async () => {
@@ -576,6 +689,7 @@ test("SearchService lexical search only requires lexical readiness", async () =>
 		async getStatus() {
 			return [];
 		},
+		async recordLexicalSearchObservation() {},
 	} as unknown as IndexCoordinator;
 
 	const backend: LexicalSearchBackend = {

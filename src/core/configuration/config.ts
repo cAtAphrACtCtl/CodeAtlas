@@ -37,11 +37,19 @@ export interface DebugConfig {
 	trace: boolean;
 }
 
+export interface IndexingConfig {
+	/** Zoekt index build timeout in milliseconds. Default: 120000 (2 min). */
+	indexBuildTimeoutMs: number;
+	/** Symbol extraction concurrency limit. Default: unbounded (0 = no limit). */
+	symbolConcurrency: number;
+}
+
 export interface CodeAtlasConfig {
 	registryPath: string;
 	metadataPath: string;
 	indexRoot: string;
 	lexicalBackend: LexicalBackendConfig;
+	indexing: IndexingConfig;
 	search: {
 		defaultLimit: number;
 		maxLimit: number;
@@ -88,6 +96,7 @@ interface PartialCodeAtlasConfig {
 	metadataPath?: string;
 	indexRoot?: string;
 	lexicalBackend?: PartialLexicalBackendConfig;
+	indexing?: Partial<IndexingConfig>;
 	search?: Partial<CodeAtlasConfig["search"]>;
 	mcp?: Partial<CodeAtlasConfig["mcp"]>;
 	debug?: Partial<DebugConfig>;
@@ -192,6 +201,10 @@ export function defaultConfig(baseDir = process.cwd()): CodeAtlasConfig {
 		),
 		indexRoot: path.resolve(baseDir, indexRoot),
 		lexicalBackend: resolveLexicalBackendConfig(baseDir, undefined, indexRoot),
+		indexing: {
+			indexBuildTimeoutMs: 120_000,
+			symbolConcurrency: 0,
+		},
 		search: {
 			defaultLimit: 20,
 			maxLimit: 100,
@@ -258,6 +271,10 @@ export async function loadConfig(
 			userConfig.lexicalBackend,
 			userIndexRoot,
 		),
+		indexing: {
+			...defaults.indexing,
+			...userConfig.indexing,
+		},
 		search: {
 			...defaults.search,
 			...userConfig.search,

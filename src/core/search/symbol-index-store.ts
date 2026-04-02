@@ -43,6 +43,10 @@ function symbolFileName(repo: string): string {
 	return `${toSafeFileName(repo)}-${hash}.json`;
 }
 
+export function getSymbolIndexPath(indexRoot: string, repo: string): string {
+	return path.join(indexRoot, "symbols", symbolFileName(repo));
+}
+
 async function fileExists(filePath: string): Promise<boolean> {
 	try {
 		await access(filePath);
@@ -127,7 +131,7 @@ export class FileSymbolIndexStore implements SymbolIndexStore {
 	}
 
 	private getIndexPath(repo: string): string {
-		return path.join(this.indexRoot, "symbols", symbolFileName(repo));
+		return getSymbolIndexPath(this.indexRoot, repo);
 	}
 
 	private getLegacyIndexPath(repo: string): string {

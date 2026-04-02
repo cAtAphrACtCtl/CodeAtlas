@@ -45,19 +45,41 @@ export class SearchService {
 		const repositories = await this.resolveRepositories(request.repos);
 		const limit = this.resolveLimit(request.limit);
 
-		await Promise.all(
+		const readinessStatuses = await Promise.all(
 			repositories.map((repository) =>
 				this.indexCoordinator.ensureLexicalReady(repository.name),
 			),
 		);
 
 		const searchResults = await Promise.all(
-			repositories.map((repository) =>
-				this.lexicalBackend.searchRepository(repository, {
+			repositories.map(async (repository, repositoryIndex) => {
+				const searchStart = performance.now();
+				const hits = await this.lexicalBackend.searchRepository(repository, {
 					query: request.query,
 					limit,
-				}),
-			),
+				});
+				const searchDurationMs = Math.round(performance.now() - searchStart);
+				const readinessStatus = readinessStatuses[repositoryIndex];
+				const backendUsed =
+					readinessStatus?.activeBackend ??
+					readinessStatus?.backend ??
+					this.lexicalBackend.kind;
+				this.logger?.info("search-service", "lexical search completed", {
+					event: "search.lexical.complete",
+					repo: repository.name,
+					durationMs: searchDurationMs,
+					details: {
+						query: request.query,
+						hitCount: hits.length,
+						backend: backendUsed,
+					},
+				});
+				await this.indexCoordinator.recordLexicalSearchObservation(repository.name, {
+					durationMs: searchDurationMs,
+					backend: backendUsed,
+				});
+				return hits;
+			}),
 		);
 
 		const results: SearchResult[] = searchResults
@@ -144,12 +166,26 @@ export class SearchService {
 		);
 
 		const results = await Promise.all(
-			repositories.map((repository) =>
-				this.symbolSearchBackend.searchRepository(repository.name, {
-					...request,
-					limit,
-				}),
-			),
+			repositories.map(async (repository) => {
+				const searchStart = performance.now();
+				const matches = await this.symbolSearchBackend.searchRepository(
+					repository.name,
+					{
+						...request,
+						limit,
+					},
+				);
+				this.logger?.info("search-service", "symbol search completed", {
+					event: "search.symbol.complete",
+					repo: repository.name,
+					durationMs: Math.round(performance.now() - searchStart),
+					details: {
+						query: request.query,
+						resultCount: matches.length,
+					},
+				});
+				return matches;
+			}),
 		);
 
 		const response: SymbolSearchResponse = {

@@ -8,6 +8,8 @@ export interface RepositoryRegistration {
 
 export interface RepositoryRecord extends RepositoryRegistration {
 	registeredAt: string;
+	lexicalIndexPath?: string;
+	symbolIndexPath?: string;
 }
 
 export interface RepositoryRegistry {
