@@ -52,17 +52,20 @@ Started now:
 - [ ] Validate current CLI-based Zoekt integration on Windows and WSL/Linux.
 - [ ] Document what counts as acceptable fallback to ripgrep and what counts as a hard failure.
 - [ ] Evaluate whether Zoekt service APIs or streaming search are worth adopting separately from indexing.
-- [ ] Confirm whether Zoekt symbol-aware ranking or `sym:`-style workflows reduce the need for custom symbol indexing.
+- [x] Confirm whether Zoekt symbol-aware ranking or `sym:`-style workflows reduce the need for custom symbol indexing.
+  - Result: Zoekt `sym:` queries on CargoWise returned hits that did not survive exact filtering; `find_symbol` now falls back to direct ripgrep, so custom symbol indexing is decoupled from the query path but not yet confirmed as removable.
 - [x] Isolate per-repository Zoekt index artifacts into dedicated subdirectories.
 - [x] Derive Zoekt index root from top-level `indexRoot` config automatically.
 - [x] Provide migration path from old shared flat Zoekt index layout.
 
 ## Symbol path decision
 
-- [ ] Compare `find_symbol` against Zoekt-first lexical workflows for definition lookup.
+- [x] Compare `find_symbol` against Zoekt-first lexical workflows for definition lookup.
+  - Result: `find_symbol` refactored to use Zoekt-first queries with ripgrep fallback. Zoekt `sym:` prefix did not produce usable results on CargoWise; ripgrep fallback works but is slower (~9-12s) and noisier (cross-language/test hits).
 - [ ] Measure the refresh cost added by the current custom symbol extraction path.
-- [ ] Decide whether custom symbol indexing should be kept, limited, decoupled, or removed.
-- [ ] Do not expand custom symbol indexing scope until that decision is made.
+- [~] Decide whether custom symbol indexing should be kept, limited, decoupled, or removed.
+  - Progress: query path decoupled from custom extraction; extraction still runs but output is unused at query time; formal decision pending.
+- [x] Do not expand custom symbol indexing scope until that decision is made.
 
 ## Deferred work
 

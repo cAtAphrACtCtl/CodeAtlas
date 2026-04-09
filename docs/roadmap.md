@@ -94,7 +94,7 @@ Exit criteria:
 
 ## Phase 2: Experimental Symbol Lookup
 
-Status: experimental
+Status: evaluating transition
 
 Delivered so far:
 
@@ -105,16 +105,24 @@ Delivered so far:
 - query-time readiness checks that stay aligned with repository refresh behavior
 - strict exact-name filtering for `find_symbol exact=true`
 - `read_source` now rejects out-of-range starting lines explicitly
+- `find_symbol` refactored to use Zoekt-first lexical queries with ripgrep fallback, decoupling the query path from custom symbol extraction
+- `find_symbol` now only requires lexical readiness, not symbol readiness, so it is available as soon as the lexical backend is ready
+- symbol name and kind inference from grep snippet text via regex pattern matching replaces the pre-built symbol JSON lookup at query time
+- explicit service-tier model (`full`, `lexical-only`, `fallback`, `unavailable`) derived at every status mutation and surfaced in CLI and MCP status
 
 Decision gate:
 
 - determine whether dedicated symbol extraction adds enough value over Zoekt-first lexical workflows and Zoekt's own symbol-aware ranking signals to justify long-term maintenance
+- preliminary evaluation: Zoekt `sym:` prefix queries on CargoWise did not survive exact filtering, so `find_symbol` currently falls back to direct ripgrep for every query on that repository; custom extraction output is now unused at query time but still runs during refresh for metrics and potential future fallback use
+- a formal keep, limit, or remove decision for custom symbol extraction is still pending
 
 Remaining work:
 
-- compare `find_symbol` against Zoekt-first definition lookup workflows on representative repositories
-- decouple symbol refresh cost from lexical refresh if the feature is retained
-- avoid broader custom symbol indexing scope until the feature proves necessary
+- document a formal decision record for Zoekt-first symbol queries versus custom extraction, including measured latency and accuracy comparison
+- decide whether custom symbol extraction should be kept as a background enrichment, limited to specific scenarios, or removed to save refresh cost
+- improve snippet-based symbol kind inference to handle TypeScript modifiers (`declare`, `abstract`) and generics
+- fix `buildBackendQuery` word-boundary regex for `$`-prefixed identifiers
+- evaluate path-aware ranking or filtering to reduce noise from generated trees, test files, and cross-language hits in grep-backed `find_symbol`
 - keep symbol failures explicit and non-blocking for lexical validation work
 
 Exit criteria:
@@ -123,6 +131,7 @@ Exit criteria:
 - lexical indexing benchmarks can be measured independently from symbol extraction cost
 - symbol indexing failure remains explicit and does not mask lexical readiness state
 - `find_symbol` scope and operational cost are documented clearly
+- snippet-based symbol inference accuracy is validated against representative repositories
 
 ## Phase 2.5: Operational Hardening, Freshness, And Evaluation
 
@@ -147,7 +156,7 @@ Planned work:
 - benchmark suites for large repositories and repeated refresh after repo changes
 - contract and relevance regression checks for Zoekt-first workflows
 - more explicit user-visible diagnostics for ready, stale, partial, and error states
-- decision records for Zoekt-first workflows versus optional custom symbol indexing
+- decision records for Zoekt-first workflows versus optional custom symbol indexing (preliminary: `find_symbol` now uses Zoekt-first lexical queries; formal decision pending)
 - detailed large-repository indexing design and phased implementation plan captured in `docs/large-repository-indexing-design.md`
 
 Exit criteria:

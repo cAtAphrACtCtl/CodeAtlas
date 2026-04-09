@@ -88,15 +88,17 @@ function printRepoTable(repos: RepositoryRecord[], statuses: RepositoryIndexStat
 		return;
 	}
 	const header = ["NAME", "STATE", "BACKEND", "SYMBOL", "ROOT"].join("  ");
-	console.log(header);
-	console.log("─".repeat(header.length + 20));
+	const headerWithTier = ["NAME", "STATE", "TIER", "BACKEND", "SYMBOL", "ROOT"].join("  ");
+	console.log(headerWithTier);
+	console.log("─".repeat(headerWithTier.length + 20));
 	for (const repo of repos) {
 		const s = statusMap.get(repo.name);
 		const state = s?.state ?? "not_indexed";
+		const tier = s?.serviceTier ?? "—";
 		const sym = s?.symbolState ?? "—";
 		const backend = s?.backend ?? "—";
 		console.log(
-			`${stateSymbol(state)} ${repo.name.padEnd(24)}  ${state.padEnd(12)}  ${backend.padEnd(8)}  ${sym.padEnd(10)}  ${repo.rootPath}`,
+			`${stateSymbol(state)} ${repo.name.padEnd(24)}  ${state.padEnd(12)}  ${tier.padEnd(12)}  ${backend.padEnd(8)}  ${sym.padEnd(10)}  ${repo.rootPath}`,
 		);
 		if (s?.detail) {
 			console.log(`  detail: ${s.detail}`);
@@ -111,6 +113,7 @@ function printRepoTable(repos: RepositoryRecord[], statuses: RepositoryIndexStat
 function printStatus(status: RepositoryIndexStatus): void {
 	console.log(`repo:           ${status.repo}`);
 	console.log(`state:          ${stateSymbol(status.state)} ${status.state}`);
+	if (status.serviceTier) console.log(`service tier:   ${status.serviceTier}`);
 	console.log(`backend:        ${status.backend}`);
 	if (status.configuredBackend) console.log(`configured:     ${status.configuredBackend}`);
 	if (status.reason) console.log(`reason:         ${status.reason}`);

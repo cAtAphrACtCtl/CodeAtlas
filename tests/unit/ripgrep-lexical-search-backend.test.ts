@@ -11,6 +11,9 @@ const maxBytesPerFile = 256 * 1024;
 const boundaryQueries = [
 	"root-hit",
 	"hidden-hit",
+	"artifact-alpha",
+	"artifact-beta",
+	"artifact-gamma",
 	"node-hit",
 	"dist-hit",
 	"data-hit",
@@ -39,6 +42,9 @@ async function createBoundaryFixture(t: test.TestContext) {
 	await mkdir(path.join(repositoryRoot, "node_modules", "pkg"), {
 		recursive: true,
 	});
+	await mkdir(path.join(repositoryRoot, "bin"), { recursive: true });
+	await mkdir(path.join(repositoryRoot, "obj"), { recursive: true });
+	await mkdir(path.join(repositoryRoot, "publish"), { recursive: true });
 	await mkdir(path.join(repositoryRoot, "dist"), { recursive: true });
 	await mkdir(path.join(repositoryRoot, "data"), { recursive: true });
 	await mkdir(path.join(repositoryRoot, ".next"), { recursive: true });
@@ -47,6 +53,21 @@ async function createBoundaryFixture(t: test.TestContext) {
 	await writeFile(
 		path.join(repositoryRoot, ".hidden.txt"),
 		"hidden-hit\n",
+		"utf8",
+	);
+	await writeFile(
+		path.join(repositoryRoot, "bin", "generated.txt"),
+		"artifact-alpha\n",
+		"utf8",
+	);
+	await writeFile(
+		path.join(repositoryRoot, "obj", "intermediate.txt"),
+		"artifact-beta\n",
+		"utf8",
+	);
+	await writeFile(
+		path.join(repositoryRoot, "publish", "bundle.txt"),
+		"artifact-gamma\n",
 		"utf8",
 	);
 	await writeFile(
@@ -125,6 +146,9 @@ test("BootstrapRipgrepLexicalSearchBackend ripgrep search respects directory and
 	assert.deepEqual(searches, {
 		"root-hit": ["main.txt"],
 		"hidden-hit": [".hidden.txt"],
+		"artifact-alpha": [],
+		"artifact-beta": [],
+		"artifact-gamma": [],
 		"node-hit": [],
 		"dist-hit": [],
 		"data-hit": [],
@@ -150,6 +174,9 @@ test("BootstrapRipgrepLexicalSearchBackend naive fallback matches the same lexic
 	assert.deepEqual(searches, {
 		"root-hit": ["main.txt"],
 		"hidden-hit": [".hidden.txt"],
+		"artifact-alpha": [],
+		"artifact-beta": [],
+		"artifact-gamma": [],
 		"node-hit": [],
 		"dist-hit": [],
 		"data-hit": [],

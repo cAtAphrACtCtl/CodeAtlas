@@ -159,21 +159,24 @@ export class SearchService {
 		const repositories = await this.resolveRepositories(request.repos);
 		const limit = this.resolveLimit(request.limit);
 
-		await Promise.all(
+		const readinessStatuses = await Promise.all(
 			repositories.map((repository) =>
-				this.indexCoordinator.ensureSymbolReady(repository.name),
+				this.indexCoordinator.ensureLexicalReady(repository.name),
 			),
 		);
 
 		const results = await Promise.all(
-			repositories.map(async (repository) => {
+			repositories.map(async (repository, repositoryIndex) => {
 				const searchStart = performance.now();
 				const matches = await this.symbolSearchBackend.searchRepository(
-					repository.name,
+					repository,
 					{
 						...request,
 						limit,
 					},
+					readinessStatuses[repositoryIndex]?.activeBackend ??
+						readinessStatuses[repositoryIndex]?.backend ??
+						this.lexicalBackend.kind,
 				);
 				this.logger?.info("search-service", "symbol search completed", {
 					event: "search.symbol.complete",
@@ -181,6 +184,10 @@ export class SearchService {
 					durationMs: Math.round(performance.now() - searchStart),
 					details: {
 						query: request.query,
+						backend:
+							readinessStatuses[repositoryIndex]?.activeBackend ??
+							readinessStatuses[repositoryIndex]?.backend ??
+							this.lexicalBackend.kind,
 						resultCount: matches.length,
 					},
 				});

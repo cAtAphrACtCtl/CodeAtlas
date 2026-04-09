@@ -1,9 +1,11 @@
 ﻿import { toErrorDetails } from "../common/debug.js";
 import { CodeAtlasError } from "../common/errors.js";
 import type {
+	deriveServiceTier,
 	MetadataStore,
 	RepositoryIndexStatus,
 } from "../metadata/metadata-store.js";
+import { deriveServiceTier as computeServiceTier } from "../metadata/metadata-store.js";
 import type { RepositoryRegistry } from "../registry/repository-registry.js";
 import type { LexicalSearchBackend } from "../search/lexical-search-backend.js";
 import type { TypeScriptSymbolExtractor } from "../search/symbol-extractor.js";
@@ -80,6 +82,13 @@ export class IndexCoordinator {
 		};
 	}
 
+	private withServiceTier<T extends RepositoryIndexStatus>(status: T): T {
+		return {
+			...status,
+			serviceTier: computeServiceTier(status),
+		};
+	}
+
 	async recordLexicalSearchObservation(
 		repoName: string,
 		observation: {
@@ -94,12 +103,12 @@ export class IndexCoordinator {
 
 		const activeBackend =
 			observation.backend ?? existing.activeBackend ?? existing.backend;
-		await this.metadataStore.setIndexStatus({
+		await this.metadataStore.setIndexStatus(this.withServiceTier({
 			...existing,
 			...this.buildFallbackDetails(activeBackend, existing.reason, existing.detail),
 			lastSearchDurationMs: observation.durationMs,
 			searchBackend: activeBackend,
-		});
+		}));
 	}
 
 	async ensureReady(repoName: string): Promise<RepositoryIndexStatus> {
@@ -259,7 +268,7 @@ export class IndexCoordinator {
 		}
 
 		const existing = await this.metadataStore.getIndexStatus(repoName);
-		await this.metadataStore.setIndexStatus({
+		await this.metadataStore.setIndexStatus(this.withServiceTier({
 			repo: repository.name,
 			backend: existing?.backend ?? this.lexicalBackend.kind,
 			configuredBackend: existing?.configuredBackend ?? this.lexicalBackend.kind,
@@ -284,7 +293,7 @@ export class IndexCoordinator {
 				errors.length === 0
 					? `Index cleanup completed (target=${target})`
 					: `Index cleanup partially completed (target=${target}): ${errors.join("; ")}`,
-		});
+		}));
 
 		return {
 			repo: repoName,
@@ -386,7 +395,7 @@ export class IndexCoordinator {
 			detail,
 		};
 
-		await this.metadataStore.setIndexStatus(status);
+		await this.metadataStore.setIndexStatus(this.withServiceTier(status));
 		this.logDebug("stored stale repository status", {
 			repo: repoName,
 			backend: status.backend,
@@ -440,7 +449,7 @@ export class IndexCoordinator {
 				backend: existing.backend,
 				configuredBackend: existing.configuredBackend,
 			});
-			return existing;
+			return this.withServiceTier(existing);
 		}
 
 		this.logDebug("stored lexical status is no longer ready", {
@@ -451,7 +460,7 @@ export class IndexCoordinator {
 			detail: readiness.detail,
 		});
 
-		await this.metadataStore.setIndexStatus({
+		await this.metadataStore.setIndexStatus(this.withServiceTier({
 			...existing,
 			backend: existing.backend || this.lexicalBackend.kind,
 			configuredBackend: existing.configuredBackend ?? this.lexicalBackend.kind,
@@ -463,7 +472,7 @@ export class IndexCoordinator {
 			state: readiness.state ?? "stale",
 			reason: readiness.reason,
 			detail: readiness.detail ?? existing.detail,
-		});
+		}));
 
 		return null;
 	}
@@ -480,7 +489,7 @@ export class IndexCoordinator {
 		const existing = await this.metadataStore.getIndexStatus(repoName);
 		const now = new Date().toISOString();
 		const activeBackend = this.deriveActiveBackend(existing);
-		return {
+		return this.withServiceTier({
 			repo: repository.name,
 			backend: existing?.backend ?? this.lexicalBackend.kind,
 			configuredBackend: this.lexicalBackend.kind,
@@ -506,7 +515,7 @@ export class IndexCoordinator {
 			symbolLastIndexedAt: existing?.symbolLastIndexedAt,
 			symbolCount: existing?.symbolCount,
 			detail: "Repository refresh in progress",
-		};
+		});
 	}
 
 	private createRefreshJobId(repoName: string): string {
@@ -572,6 +581,16 @@ export class IndexCoordinator {
 				symbolLastIndexedAt: existing?.symbolLastIndexedAt,
 				symbolCount: existing?.symbolCount,
 			};
+			status = this.withServiceTier(status);
+			await this.metadataStore.setIndexStatus(status);
+			this.logDebug("stored lexical-ready status while symbol extraction continues", {
+				repo: repository.name,
+				backend: status.backend,
+				configuredBackend: status.configuredBackend,
+				state: status.state,
+				symbolState: status.symbolState,
+				serviceTier: status.serviceTier,
+			});
 
 			try {
 				const symbolStart = performance.now();
@@ -607,7 +626,7 @@ export class IndexCoordinator {
 			}
 
 			const refreshDurationMs = Math.round(performance.now() - refreshStart);
-			status = {
+			status = this.withServiceTier({
 				...status,
 				jobId: undefined,
 				jobPhase: undefined,
@@ -616,7 +635,7 @@ export class IndexCoordinator {
 				jobUpdatedAt: undefined,
 				progressMessage: undefined,
 				lastRefreshDurationMs: refreshDurationMs,
-			};
+			});
 
 			await this.metadataStore.setIndexStatus(status);
 			this.logger?.info("indexer", "repository refresh completed", {
@@ -642,7 +661,7 @@ export class IndexCoordinator {
 			});
 			return status;
 		} catch (error) {
-			const failedStatus: RepositoryIndexStatus = {
+			const failedStatus: RepositoryIndexStatus = this.withServiceTier({
 				...activeIndexingStatus,
 				...this.buildFallbackDetails(
 					activeIndexingStatus.activeBackend ??
@@ -658,7 +677,7 @@ export class IndexCoordinator {
 				jobUpdatedAt: new Date().toISOString(),
 				detail: `Repository refresh failed: ${String(error)}`,
 				lastRefreshDurationMs: Math.round(performance.now() - refreshStart),
-			};
+			});
 			await this.metadataStore.setIndexStatus(failedStatus);
 			this.logger?.error("indexer", "repository refresh failed", {
 				event: "index.refresh.failed",
@@ -677,18 +696,18 @@ export class IndexCoordinator {
 		if (repoName) {
 			const existing = await this.metadataStore.getIndexStatus(repoName);
 			if (existing) {
-				return [existing];
+				return [this.withServiceTier(existing)];
 			}
 
 			return [
-				{
+				this.withServiceTier({
 					repo: repoName,
 					backend: this.lexicalBackend.kind,
 					configuredBackend: this.lexicalBackend.kind,
 					...this.buildFallbackDetails(this.lexicalBackend.kind),
 					state: "not_indexed",
 					symbolState: "not_indexed",
-				},
+				}),
 			];
 		}
 
@@ -698,14 +717,16 @@ export class IndexCoordinator {
 
 		return repositories.map((repository) => {
 			return (
-				statusMap.get(repository.name) ?? {
+				(statusMap.get(repository.name)
+					? this.withServiceTier(statusMap.get(repository.name)!)
+					: this.withServiceTier({
 					repo: repository.name,
 					backend: this.lexicalBackend.kind,
 					configuredBackend: this.lexicalBackend.kind,
 					...this.buildFallbackDetails(this.lexicalBackend.kind),
 					state: "not_indexed",
 					symbolState: "not_indexed",
-				}
+				}))
 			);
 		});
 	}

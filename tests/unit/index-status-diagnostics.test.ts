@@ -29,6 +29,7 @@ test("attachIndexStatusDiagnostics adds friendly Zoekt remediation when fallback
 		},
 	);
 
+	assert.equal(status.serviceTier, "fallback");
 	assert.equal(status.diagnostics?.severity, "warning");
 	assert.match(status.diagnostics?.summary ?? "", /Zoekt is not available/i);
 	assert.match(
@@ -66,6 +67,7 @@ test("attachIndexStatusDiagnostics marks stale repositories with refresh guidanc
 		},
 	);
 
+	assert.equal(status.serviceTier, "unavailable");
 	assert.equal(status.diagnostics?.severity, "warning");
 	assert.match(status.diagnostics?.summary ?? "", /stale/i);
 	assert.match((status.diagnostics?.remedies ?? []).join("\n"), /refresh_repo/);
@@ -96,9 +98,38 @@ test("attachIndexStatusDiagnostics explains symbol-only degradation when lexical
 		},
 	);
 
+	assert.equal(status.serviceTier, "lexical-only");
 	assert.equal(status.diagnostics?.severity, "warning");
-	assert.match(status.diagnostics?.summary ?? "", /symbol indexing/i);
-	assert.match(status.diagnostics?.impact ?? "", /find_symbol/i);
+	assert.match(status.diagnostics?.summary ?? "", /background symbol extraction/i);
+	assert.match(status.diagnostics?.impact ?? "", /lexical-backed `find_symbol`/i);
+});
+
+test("attachIndexStatusDiagnostics derives a full service tier when lexical and symbol indexes are ready", () => {
+	const status = attachIndexStatusDiagnostics(
+		{
+			repo: "sample",
+			backend: "zoekt",
+			configuredBackend: "zoekt",
+			state: "ready",
+			symbolState: "ready",
+			detail: "ready",
+		},
+		{
+			kind: "zoekt",
+			zoektIndexExecutable: "zoekt-index",
+			zoektSearchExecutable: "zoekt",
+			indexRoot: "C:/tmp/indexes/zoekt",
+			allowBootstrapFallback: true,
+			bootstrapFallback: {
+				kind: "ripgrep",
+				executable: "rg",
+				fallbackToNaiveScan: true,
+			},
+		},
+	);
+
+	assert.equal(status.serviceTier, "full");
+	assert.equal(status.diagnostics, undefined);
 });
 
 test("attachIndexStatusDiagnostics explains fallback service during background refresh", () => {
@@ -130,6 +161,7 @@ test("attachIndexStatusDiagnostics explains fallback service during background r
 		},
 	);
 
+	assert.equal(status.serviceTier, "fallback");
 	assert.equal(status.diagnostics?.severity, "info");
 	assert.match(status.diagnostics?.summary ?? "", /ripgrep/i);
 	assert.match(status.diagnostics?.impact ?? "", /available via ripgrep/i);

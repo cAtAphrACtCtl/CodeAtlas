@@ -96,7 +96,7 @@ The caller gets an immediate response containing current index status plus a `jo
   At any point, failure → "failed" or "degraded" state
 ```
 
-Note: symbol extraction runs **after** lexical promotion, so `state: "ready"` for lexical search can be reached before symbols are available. The metadata model must distinguish `state` (lexical) and `symbolState` independently — this already exists in `RepositoryIndexStatus`.
+Note: symbol extraction runs **after** lexical promotion, so `state: "ready"` for lexical search can be reached before symbols are available. The metadata model must distinguish `state` (lexical) and `symbolState` independently — this already exists in `RepositoryIndexStatus`, and CodeAtlas now persists that lexical-ready state while symbol extraction is still in flight.
 
 #### Scheduler rules
 
@@ -306,12 +306,12 @@ Define explicit tiers of service quality:
 
 | Tier | Condition | Search Behavior |
 |------|-----------|-----------------|
-| **Full** | Zoekt active index ready, symbols ready | Zoekt lexical + symbol search |
-| **Lexical-only** | Zoekt active index ready, symbols pending/failed | Zoekt lexical search, symbol search degraded |
-| **Fallback** | Zoekt index not ready, ripgrep fallback active | Ripgrep lexical search, symbols may be available |
-| **Unavailable** | No backend can serve, no fallback configured | Search returns error with diagnostic detail |
+| **Full** | Active lexical backend ready, symbols ready | Lexical search and `find_symbol` both available |
+| **Lexical-only** | Active lexical backend ready, symbols pending/failed | Lexical search available, symbol search degraded |
+| **Fallback** | Configured lexical backend not active, fallback backend serving | Degraded lexical search via fallback backend |
+| **Unavailable** | No ready lexical backend can be confirmed | Search returns error or waits for a backend to become ready |
 
-Each tier is recorded in metadata and visible in `get_index_status`.
+Each tier is recorded in metadata and visible in `get_index_status` via `serviceTier`.
 
 #### Improvement 4: First-time registration fallback policy
 
@@ -577,7 +577,7 @@ Based on the three focus areas, the recommended implementation order is:
 
 ## Open Questions
 
-- Should lexical readiness go active before symbol extraction finishes? (Recommended: yes, with `symbolState: "indexing"`)
+- Lexical readiness should go active before symbol extraction finishes. CodeAtlas now persists `state: "ready"` with `symbolState: "indexing"` so `code_search` can use the new lexical backend while `find_symbol` remains gated on symbol readiness.
 - What is the right `indexBuildTimeoutMs` default for large repos? (Candidate: 1800000ms = 30 min)
 - Should timing data be persisted across server restarts or treated as ephemeral?
 - Should `get_index_status` return timing history (last N refreshes) or only the most recent?

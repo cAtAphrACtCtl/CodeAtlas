@@ -5,7 +5,10 @@ import type {
 	RipgrepLexicalBackendConfig,
 	ZoektLexicalBackendConfig,
 } from "../configuration/config.js";
-import type { RepositoryIndexStatus } from "../metadata/metadata-store.js";
+import {
+	deriveServiceTier as computeServiceTier,
+	type RepositoryIndexStatus,
+} from "../metadata/metadata-store.js";
 
 export interface RepositoryIndexDiagnostics {
 	severity: "info" | "warning" | "error";
@@ -201,15 +204,15 @@ function createSymbolDiagnostics(
 ): RepositoryIndexDiagnostics {
 	return {
 		severity: status.state === "ready" ? "warning" : "error",
-		summary: "Lexical indexing succeeded, but symbol indexing is not ready.",
+		summary: "Lexical indexing succeeded, but background symbol extraction is not ready.",
 		impact:
 			status.state === "ready"
-				? "`code_search` can still work, but `find_symbol` may be stale or unavailable for this repository."
+				? "`code_search` and lexical-backed `find_symbol` can still work, but symbol metrics and any snapshot-derived symbol artifacts may be stale."
 				: "Both lexical and symbol workflows may be affected until refresh succeeds.",
 		causes: [status.detail ?? `Symbol state is ${status.symbolState}.`],
 		remedies: [
 			"Run `refresh_repo` again after fixing the symbol extraction issue.",
-			"Use `code_search` plus `read_source` as a fallback while symbol indexing is unavailable.",
+			"If `find_symbol` results look noisy, use `read_source` to verify the matched lines while background symbol extraction is unavailable.",
 		],
 	};
 }
@@ -234,54 +237,63 @@ export function attachIndexStatusDiagnostics(
 	status: RepositoryIndexStatus,
 	lexicalBackendConfig: LexicalBackendConfig,
 ): DiagnosedRepositoryIndexStatus {
+	const statusWithServiceTier: DiagnosedRepositoryIndexStatus = {
+		...status,
+		serviceTier: status.serviceTier ?? computeServiceTier(status),
+	};
 	let diagnostics: RepositoryIndexDiagnostics | undefined;
 
 	if (
-		status.reason === "zoekt_unavailable" &&
+		statusWithServiceTier.reason === "zoekt_unavailable" &&
 		lexicalBackendConfig.kind === "zoekt"
 	) {
 		diagnostics = createZoektUnavailableDiagnostics(
-			status,
+			statusWithServiceTier,
 			lexicalBackendConfig,
 		);
 	} else if (
-		(status.reason === "ripgrep_unavailable" ||
-			status.reason === "ripgrep_naive_fallback") &&
+		(statusWithServiceTier.reason === "ripgrep_unavailable" ||
+			statusWithServiceTier.reason === "ripgrep_naive_fallback") &&
 		lexicalBackendConfig.kind === "ripgrep"
 	) {
 		diagnostics = createRipgrepUnavailableDiagnostics(
-			status,
+			statusWithServiceTier,
 			lexicalBackendConfig,
 		);
 	} else if (
-		status.reason === "refresh_in_progress" ||
-		status.state === "indexing"
+		statusWithServiceTier.reason === "refresh_in_progress" ||
+		statusWithServiceTier.state === "indexing"
 	) {
-		diagnostics = createIndexingDiagnostics(status);
+		diagnostics = createIndexingDiagnostics(statusWithServiceTier);
 	} else if (
-		status.reason === "configured_backend_mismatch" ||
-		status.reason === "fallback_backend_unverified" ||
-		status.fallbackActive
+		statusWithServiceTier.reason === "configured_backend_mismatch" ||
+		statusWithServiceTier.reason === "fallback_backend_unverified" ||
+		statusWithServiceTier.fallbackActive
 	) {
-		diagnostics = createFallbackActiveDiagnostics(status);
-	} else if (status.reason === "repository_stale" || status.state === "stale") {
-		diagnostics = createStaleDiagnostics(status);
+		diagnostics = createFallbackActiveDiagnostics(statusWithServiceTier);
 	} else if (
-		status.reason === "symbol_index_failed" ||
-		(status.state === "ready" &&
-			status.symbolState &&
-			status.symbolState !== "ready" &&
-			status.symbolState !== "not_indexed")
+		statusWithServiceTier.reason === "repository_stale" ||
+		statusWithServiceTier.state === "stale"
 	) {
-		diagnostics = createSymbolDiagnostics(status);
-	} else if (status.state === "error") {
-		diagnostics = createErrorDiagnostics(status);
+		diagnostics = createStaleDiagnostics(statusWithServiceTier);
 	} else if (
-		status.configuredBackend &&
-		status.backend !== status.configuredBackend
+		statusWithServiceTier.reason === "symbol_index_failed" ||
+		(statusWithServiceTier.state === "ready" &&
+			statusWithServiceTier.symbolState &&
+			statusWithServiceTier.symbolState !== "ready" &&
+			statusWithServiceTier.symbolState !== "not_indexed")
 	) {
-		diagnostics = createFallbackActiveDiagnostics(status);
+		diagnostics = createSymbolDiagnostics(statusWithServiceTier);
+	} else if (statusWithServiceTier.state === "error") {
+		diagnostics = createErrorDiagnostics(statusWithServiceTier);
+	} else if (
+		statusWithServiceTier.configuredBackend &&
+		statusWithServiceTier.backend !== statusWithServiceTier.configuredBackend
+	) {
+		diagnostics = createFallbackActiveDiagnostics(statusWithServiceTier);
 	}
 
-	return diagnostics ? { ...status, diagnostics } : { ...status };
+	return diagnostics
+		? { ...statusWithServiceTier, diagnostics }
+		: statusWithServiceTier;
 }

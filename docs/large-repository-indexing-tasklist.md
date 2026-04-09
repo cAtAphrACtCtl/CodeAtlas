@@ -52,7 +52,7 @@ Related docs:
 - [x] Expose `fallbackReason` in status
 - [x] Improve diagnostics so indexing status explicitly says when ripgrep is serving lexical search
 - [x] Persist last observed lexical search backend in status (`searchBackend`)
-- [ ] Introduce explicit service-tier model (`full`, `lexical-only`, `fallback`, `unavailable`)
+- [x] Introduce explicit service-tier model (`full`, `lexical-only`, `fallback`, `unavailable`)
 - [ ] Pre-warm fallback readiness during first-time registration instead of inferring it from config/status
 
 ## 4. Performance instrumentation
@@ -74,10 +74,11 @@ Related docs:
 - [x] Confirm fallback activation is visible in status and logs
 - [x] Identify symbol extraction traversal as a major follow-up hotspot
 - [x] Stop symbol extraction from traversing `bin/`, `obj/`, and `publish/`
+- [x] Stop lexical indexing and fallback search from traversing `bin/`, `obj/`, and `publish/`
 - [x] Reduce ripgrep fallback work by adding more aggressive early-stop options
-- [ ] Re-run full CargoWise end-to-end timing after symbol traversal pruning
+- [x] Re-run full CargoWise end-to-end timing after symbol traversal pruning
 - [ ] Evaluate whether symbol extraction should also skip additional generated/vendor trees beyond `bin/`, `obj/`, and `publish/`
-- [ ] Decide whether symbol extraction should switch lexical state to ready before symbols complete
+- [x] Decide whether symbol extraction should switch lexical state to ready before symbols complete
 
 ## 6. Slice 3: Staged Zoekt activation
 
@@ -99,7 +100,8 @@ Related docs:
 - [x] Unit coverage for symbol traversal pruning
 - [x] Real CargoWise smoke: non-blocking registration and mid-flight fallback search
 - [x] Real CargoWise smoke after staged activation is implemented
-- [ ] Real CargoWise smoke after symbol pruning to measure end-to-end refresh improvement
+- [x] Real CargoWise smoke after symbol pruning to measure end-to-end refresh improvement
+- [x] Real CargoWise smoke after lexical boundary pruning to measure Zoekt build improvement
 
 ## 8. Latest observed CargoWise metrics
 
@@ -110,8 +112,31 @@ Related docs:
 - [x] Status persisted `lastSearchDurationMs = 10029` and `searchBackend = ripgrep`
 - [x] One full CargoWise Zoekt lexical build completed in about `654213ms`
 - [x] Pre-pruning symbol traversal walked about `394029` files before extraction work ramped up
+- [x] After symbol traversal pruning, CargoWise symbol extraction walked about `281617` files and completed in about `8434ms`
+- [x] After symbol traversal pruning, a full CargoWise Zoekt lexical build completed in about `605101ms`
+- [x] After lexical boundary pruning, a full CargoWise Zoekt lexical build completed in about `451219ms`
+- [x] After lexical boundary pruning, full CargoWise refresh completed in about `466519ms`
+- [x] After lexical boundary pruning, Zoekt-backed lexical search for the probe query completed in about `1900ms` once active shards were promoted
 
-## 9. Next recommended slice
+## 9. Zoekt-first symbol query refactor
+
+- [x] Refactor `find_symbol` to use Zoekt-first lexical queries instead of pre-built symbol JSON
+- [x] Add ripgrep fallback when Zoekt `sym:` queries yield no usable results after exact filtering
+- [x] Change `findSymbols()` to require only lexical readiness, not symbol readiness
+- [x] Add snippet-based symbol name and kind inference from grep hit text
+- [x] Validate refactored `find_symbol` against real CargoWise index
+- [x] All unit and integration tests passing after refactor (19/19)
+- [ ] Document formal decision record for Zoekt-first queries vs custom extraction
+- [ ] Fix `buildBackendQuery` word-boundary regex for `$`-prefixed identifiers
+- [ ] Extend `inferSymbolKind` to handle `declare class`, `abstract class`, generics
+- [ ] Evaluate path-aware ranking or file-extension filtering to reduce noise in grep-backed `find_symbol`
+- [ ] Decide whether to disable custom symbol extraction now that query path is decoupled
+- [ ] Optimize O(n²) dedup in `materializeSymbols` to Set-based O(n)
+
+## 10. Next recommended slice
 
 - [x] Finish staged active/staging index promotion so background builds can preserve a last-known-good Zoekt corpus
-- [ ] Re-measure CargoWise after the symbol traversal pruning already landed
+- [x] Re-measure CargoWise after the symbol traversal pruning already landed
+- [ ] Investigate mid-flight ripgrep latency variance now that Zoekt build time is down to about `451s`
+- [ ] Add path-aware ranking or filtering for `find_symbol` to prioritize business source over test/generated files
+- [ ] Measure and document custom symbol extraction cost to inform keep/remove decision

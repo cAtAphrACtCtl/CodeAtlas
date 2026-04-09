@@ -13,7 +13,7 @@ import type {
 	BackendSearchRequest,
 	LexicalSearchBackend,
 } from "./lexical-search-backend.js";
-import { skippedDirectorySet } from "./lexical-boundaries.js";
+import { skippedDirectories, skippedDirectorySet } from "./lexical-boundaries.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -232,16 +232,7 @@ export class BootstrapRipgrepLexicalSearchBackend
 			String(request.limit),
 			"--max-filesize",
 			String(this.maxBytesPerFile),
-			"--glob",
-			"!.git",
-			"--glob",
-			"!node_modules",
-			"--glob",
-			"!dist",
-			"--glob",
-			"!data",
-			"--glob",
-			"!.next",
+			...skippedDirectories.flatMap((directory) => ["--glob", `!${directory}`]),
 			request.query,
 			".",
 		];

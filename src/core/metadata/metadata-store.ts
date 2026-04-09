@@ -5,6 +5,12 @@ export type IndexState =
 	| "stale"
 	| "error";
 
+export type ServiceTier =
+	| "full"
+	| "lexical-only"
+	| "fallback"
+	| "unavailable";
+
 export type IndexStatusReason =
 	| "refresh_in_progress"
 	| "refresh_failed"
@@ -30,6 +36,7 @@ export interface RepositoryIndexStatus {
 	activeBackend?: string;
 	fallbackActive?: boolean;
 	fallbackReason?: string;
+	serviceTier?: ServiceTier;
 	state: IndexState;
 	reason?: IndexStatusReason;
 	jobId?: string;
@@ -50,6 +57,45 @@ export interface RepositoryIndexStatus {
 	symbolExtractionDurationMs?: number;
 	lastSearchDurationMs?: number;
 	searchBackend?: string;
+}
+
+export function deriveServiceTier(
+	status: Pick<
+		RepositoryIndexStatus,
+		| "state"
+		| "symbolState"
+		| "fallbackActive"
+		| "lastIndexedAt"
+		| "backend"
+		| "configuredBackend"
+	>,
+): ServiceTier {
+	if (
+		status.fallbackActive ||
+		(status.configuredBackend !== undefined &&
+			status.backend !== status.configuredBackend)
+	) {
+		return "fallback";
+	}
+
+	if (status.state === "ready" && status.symbolState === "ready") {
+		return "full";
+	}
+
+	if (status.state === "ready") {
+		return "lexical-only";
+	}
+
+	if (
+		(status.state === "indexing" ||
+			status.state === "stale" ||
+			status.state === "error") &&
+		Boolean(status.lastIndexedAt)
+	) {
+		return "lexical-only";
+	}
+
+	return "unavailable";
 }
 
 export interface MetadataStore {

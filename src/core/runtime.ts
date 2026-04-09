@@ -9,6 +9,7 @@ import { FileMetadataStore } from "./metadata/file-metadata-store.js";
 import { FileSystemSourceReader } from "./reader/filesystem-source-reader.js";
 import { FileRepositoryRegistry } from "./registry/file-repository-registry.js";
 import { createLexicalSearchBackend } from "./search/create-lexical-search-backend.js";
+import { BootstrapRipgrepLexicalSearchBackend } from "./search/ripgrep-lexical-search-backend.js";
 import type { LexicalSearchBackend } from "./search/lexical-search-backend.js";
 import { SearchService } from "./search/search-service.js";
 import { TypeScriptSymbolExtractor } from "./search/symbol-extractor.js";
@@ -84,11 +85,21 @@ export async function createCodeAtlasServices(
 		config.search.maxBytesPerFile,
 		config.indexing,
 	);
+	const directSymbolFallbackBackend =
+		config.lexicalBackend.kind === "zoekt"
+			? new BootstrapRipgrepLexicalSearchBackend(
+					config.lexicalBackend.bootstrapFallback,
+					config.search.maxBytesPerFile,
+				)
+			: undefined;
 	const symbolExtractor = new TypeScriptSymbolExtractor({
 		concurrency: config.indexing.symbolConcurrency,
 	});
 	const symbolIndexStore = new FileSymbolIndexStore(config.indexRoot);
-	const symbolSearchBackend = new SymbolSearchBackend(symbolIndexStore);
+	const symbolSearchBackend = new SymbolSearchBackend(
+		lexicalBackend,
+		directSymbolFallbackBackend,
+	);
 	const indexCoordinator = new IndexCoordinator(
 		registry,
 		metadataStore,

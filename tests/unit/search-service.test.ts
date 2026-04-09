@@ -88,12 +88,7 @@ test("SearchService returns lexical results using the stable result contract", a
 		registry,
 		indexCoordinator,
 		backend,
-		new SymbolSearchBackend({
-			async getSymbols() {
-				return [];
-			},
-			async setSymbols() {},
-		}),
+		new SymbolSearchBackend(backend),
 		{
 			defaultLimit: 20,
 			maxLimit: 100,
@@ -206,12 +201,7 @@ test("SearchService records lexical search metrics using the active backend from
 		registry,
 		indexCoordinator,
 		backend,
-		new SymbolSearchBackend({
-			async getSymbols() {
-				return [];
-			},
-			async setSymbols() {},
-		}),
+		new SymbolSearchBackend(backend),
 		{
 			defaultLimit: 20,
 			maxLimit: 100,
@@ -295,7 +285,7 @@ test("SearchService reserves semantic and hybrid contracts with TODO markers", a
 	assert.match(hybrid.message ?? "", /TODO: hybrid_search/);
 });
 
-test("SearchService returns symbol-aware results from the local symbol index", async () => {
+test("SearchService returns symbol-aware results from direct lexical queries", async () => {
 	const repository = {
 		name: "alpha",
 		rootPath: "C:/repos/alpha",
@@ -359,26 +349,21 @@ test("SearchService returns symbol-aware results from the local symbol index", a
 				state: "ready",
 			};
 		},
-		async searchRepository() {
-			return [];
-		},
-	};
-
-	const symbolSearchBackend = new SymbolSearchBackend({
-		async getSymbols() {
+		async searchRepository(_repository, request) {
+			assert.equal(request.query, "\\bbuildAtlas\\b");
 			return [
 				{
-					repo: "alpha",
 					path: "src/example.ts",
-					name: "buildAtlas",
-					kind: "function",
-					start_line: 10,
-					end_line: 12,
+					startLine: 10,
+					endLine: 10,
+					snippet: "export function buildAtlas() {",
+					score: 99,
 				},
 			];
 		},
-		async setSymbols() {},
-	});
+	};
+
+	const symbolSearchBackend = new SymbolSearchBackend(backend);
 
 	const service = new SearchService(
 		registry,
@@ -466,43 +451,28 @@ test("SearchService exact symbol search only returns exact name matches", async 
 				state: "ready",
 			};
 		},
-		async searchRepository() {
-			return [];
-		},
-	};
-
-	const symbolSearchBackend = new SymbolSearchBackend({
-		async getSymbols() {
+		async searchRepository(_repository, request) {
+			assert.equal(request.query, "\\bcreateCodeAtlasServices\\b");
 			return [
 				{
-					repo: "alpha",
 					path: "src/runtime.ts",
-					name: "createCodeAtlasServices",
-					kind: "function",
-					start_line: 1,
-					end_line: 10,
+					startLine: 1,
+					endLine: 1,
+					snippet: "export function createCodeAtlasServices() {",
+					score: 100,
 				},
 				{
-					repo: "alpha",
 					path: "src/runtime.ts",
-					name: "CreateCodeAtlasServicesOptions",
-					kind: "interface",
-					start_line: 12,
-					end_line: 15,
-				},
-				{
-					repo: "alpha",
-					path: "src/runtime.ts",
-					name: "baseDir",
-					kind: "property",
-					start_line: 13,
-					end_line: 13,
-					container_name: "CreateCodeAtlasServicesOptions",
+					startLine: 12,
+					endLine: 12,
+					snippet: "export interface CreateCodeAtlasServicesOptions {",
+					score: 80,
 				},
 			];
 		},
-		async setSymbols() {},
-	});
+	};
+
+	const symbolSearchBackend = new SymbolSearchBackend(backend);
 
 	const service = new SearchService(
 		registry,
@@ -595,39 +565,33 @@ test("SearchService ranks symbol results across repositories by score", async ()
 				state: "ready",
 			};
 		},
-		async searchRepository() {
-			return [];
-		},
-	};
-
-	const symbolSearchBackend = new SymbolSearchBackend({
-		async getSymbols(repo) {
-			if (repo === "alpha") {
+		async searchRepository(repository, request) {
+			assert.equal(request.query, "atlas");
+			if (repository.name === "alpha") {
 				return [
 					{
-						repo: "alpha",
 						path: "src/example.ts",
-						name: "helperAtlas",
-						kind: "class",
-						start_line: 1,
-						end_line: 3,
+						startLine: 1,
+						endLine: 1,
+						snippet: "export class helperAtlas {}",
+						score: 90,
 					},
 				];
 			}
 
 			return [
 				{
-					repo: "beta",
 					path: "src/example.ts",
-					name: "atlasBuilder",
-					kind: "function",
-					start_line: 5,
-					end_line: 7,
+					startLine: 5,
+					endLine: 5,
+					snippet: "export function atlasBuilder() {",
+					score: 100,
 				},
 			];
 		},
-		async setSymbols() {},
-	});
+	};
+
+	const symbolSearchBackend = new SymbolSearchBackend(backend);
 
 	const service = new SearchService(
 		registry,
@@ -718,12 +682,7 @@ test("SearchService lexical search only requires lexical readiness", async () =>
 		registry,
 		indexCoordinator,
 		backend,
-		new SymbolSearchBackend({
-			async getSymbols() {
-				return [];
-			},
-			async setSymbols() {},
-		}),
+		new SymbolSearchBackend(backend),
 		{
 			defaultLimit: 20,
 			maxLimit: 100,
@@ -735,5 +694,199 @@ test("SearchService lexical search only requires lexical readiness", async () =>
 
 	assert.equal(response.results.length, 1);
 	assert.equal(response.results[0]?.path, "src/example.ts");
+});
+
+test("SearchService symbol search only requires lexical readiness", async () => {
+	const repository = {
+		name: "alpha",
+		rootPath: "C:/repos/alpha",
+		registeredAt: new Date().toISOString(),
+	};
+
+	const registry: RepositoryRegistry = {
+		async listRepositories() {
+			return [repository];
+		},
+		async getRepository(name) {
+			return name === repository.name ? repository : null;
+		},
+		async registerRepository() {
+			return repository;
+		},
+	};
+
+	const indexCoordinator = {
+		async ensureReady() {
+			throw new Error("not used");
+		},
+		async ensureLexicalReady() {
+			return {
+				repo: repository.name,
+				backend: "zoekt",
+				activeBackend: "ripgrep",
+				fallbackActive: true,
+				state: "indexing",
+			};
+		},
+		async ensureSymbolReady() {
+			throw new Error(
+				"symbol readiness should not be required for find_symbol",
+			);
+		},
+		async refreshRepository() {
+			throw new Error("not used");
+		},
+		async getStatus() {
+			return [];
+		},
+	} as unknown as IndexCoordinator;
+
+	const backend: LexicalSearchBackend = {
+		kind: "zoekt",
+		async prepareRepository() {
+			return {
+				repo: repository.name,
+				backend: "zoekt",
+				state: "ready",
+			};
+		},
+		async searchRepository(_repository, request) {
+			assert.equal(request.query, "\\batlas\\b");
+			return [
+				{
+					path: "src/example.ts",
+					startLine: 1,
+					endLine: 1,
+					snippet: "export const atlas = true;",
+					score: 50,
+				},
+			];
+		},
+	};
+
+	const service = new SearchService(
+		registry,
+		indexCoordinator,
+		backend,
+		new SymbolSearchBackend(backend),
+		{
+			defaultLimit: 20,
+			maxLimit: 100,
+			maxBytesPerFile: 256 * 1024,
+		},
+	);
+
+	const response = await service.findSymbols({ query: "atlas", exact: true });
+
+	assert.equal(response.results.length, 1);
+	assert.equal(response.results[0]?.name, "atlas");
+	assert.equal(response.results[0]?.kind, "variable");
+});
+
+test("SearchService falls back to direct grep when a Zoekt symbol query returns no hits", async () => {
+	const repository = {
+		name: "alpha",
+		rootPath: "C:/repos/alpha",
+		registeredAt: new Date().toISOString(),
+	};
+
+	const registry: RepositoryRegistry = {
+		async listRepositories() {
+			return [repository];
+		},
+		async getRepository(name) {
+			return name === repository.name ? repository : null;
+		},
+		async registerRepository() {
+			return repository;
+		},
+	};
+
+	const indexCoordinator = {
+		async ensureReady() {
+			throw new Error("not used");
+		},
+		async ensureLexicalReady() {
+			return {
+				repo: repository.name,
+				backend: "zoekt",
+				activeBackend: "zoekt",
+				state: "ready",
+			};
+		},
+		async ensureSymbolReady() {
+			throw new Error("not used");
+		},
+		async refreshRepository() {
+			throw new Error("not used");
+		},
+		async getStatus() {
+			return [];
+		},
+	} as unknown as IndexCoordinator;
+
+	const executedQueries: string[] = [];
+	const zoektBackend: LexicalSearchBackend = {
+		kind: "zoekt",
+		async prepareRepository() {
+			return {
+				repo: repository.name,
+				backend: "zoekt",
+				state: "ready",
+			};
+		},
+		async searchRepository(_repository, request) {
+			executedQueries.push(`zoekt:${request.query}`);
+			return [];
+		},
+	};
+
+	const grepBackend: LexicalSearchBackend = {
+		kind: "ripgrep",
+		async prepareRepository() {
+			return {
+				repo: repository.name,
+				backend: "ripgrep",
+				state: "ready",
+			};
+		},
+		async searchRepository(_repository, request) {
+			executedQueries.push(`ripgrep:${request.query}`);
+			return [
+				{
+					path: "src/example.ts",
+					startLine: 8,
+					endLine: 8,
+					snippet: "export function registerPopoverNavigation() {",
+					score: 90,
+				},
+			];
+		},
+	};
+
+	const service = new SearchService(
+		registry,
+		indexCoordinator,
+		zoektBackend,
+		new SymbolSearchBackend(zoektBackend, grepBackend),
+		{
+			defaultLimit: 20,
+			maxLimit: 100,
+			maxBytesPerFile: 256 * 1024,
+		},
+	);
+
+	const response = await service.findSymbols({
+		query: "registerPopoverNavigation",
+		exact: true,
+	});
+
+	assert.deepEqual(executedQueries, [
+		"zoekt:sym:registerPopoverNavigation",
+		"ripgrep:\\bregisterPopoverNavigation\\b",
+	]);
+	assert.equal(response.results.length, 1);
+	assert.equal(response.results[0]?.name, "registerPopoverNavigation");
+	assert.equal(response.results[0]?.kind, "function");
 });
 

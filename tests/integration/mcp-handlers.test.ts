@@ -98,7 +98,7 @@ test("MCP handlers expose phase 1 lexical search and source reading", async (t) 
 		path.join(tempRoot, "indexes"),
 	);
 	const symbolExtractor = new TypeScriptSymbolExtractor();
-	const symbolSearchBackend = new SymbolSearchBackend(symbolIndexStore);
+	const symbolSearchBackend = new SymbolSearchBackend(backend);
 	const indexCoordinator = new IndexCoordinator(
 		registry,
 		metadataStore,
@@ -150,6 +150,14 @@ test("MCP handlers expose phase 1 lexical search and source reading", async (t) 
 	assert.equal(searchPayload.results[0]?.repo, "sample");
 	assert.equal(searchPayload.results[0]?.path, "src/feature.ts");
 
+	const statusResponse = await handlers.getIndexStatus({ repo: "sample" });
+	const statusPayload = statusResponse.structuredContent as {
+		index_status: Array<{ repo: string; serviceTier?: string }>;
+	};
+
+	assert.equal(statusPayload.index_status[0]?.repo, "sample");
+	assert.equal(statusPayload.index_status[0]?.serviceTier, "full");
+
 	const symbolResponse = await handlers.findSymbol({
 		query: "buildAtlas",
 		repos: ["sample"],
@@ -172,7 +180,7 @@ test("MCP handlers expose phase 1 lexical search and source reading", async (t) 
 	assert.equal(symbolPayload.results[0]?.kind, "function");
 	assert.equal(symbolPayload.results[0]?.path, "src/feature.ts");
 	assert.equal(symbolPayload.results[0]?.start_line, 5);
-	assert.equal(symbolPayload.results[0]?.end_line, 7);
+	assert.equal(symbolPayload.results[0]?.end_line, 5);
 
 	const readResponse = await handlers.readSource({
 		repo: "sample",
