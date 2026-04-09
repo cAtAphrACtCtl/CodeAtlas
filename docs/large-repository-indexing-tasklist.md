@@ -5,7 +5,6 @@ Status legend: [ ] todo, [~] in progress, [x] done
 Related docs:
 
 - `docs/large-repository-indexing-design.md`
-- `review.md`
 
 ## 0. Current snapshot
 
@@ -130,7 +129,8 @@ Related docs:
 - [ ] Fix `buildBackendQuery` word-boundary regex for `$`-prefixed identifiers
 - [ ] Extend `inferSymbolKind` to handle `declare class`, `abstract class`, generics
 - [ ] Evaluate path-aware ranking or file-extension filtering to reduce noise in grep-backed `find_symbol`
-- [ ] Decide whether to disable custom symbol extraction now that query path is decoupled
+- [ ] Add optional config to disable custom symbol extraction now that query path is decoupled
+- [ ] Decide whether custom symbol extraction should remain as background metadata generation after the config gate exists
 - [ ] Optimize O(n²) dedup in `materializeSymbols` to Set-based O(n)
 
 ## 10. Next recommended slice
@@ -140,3 +140,4 @@ Related docs:
 - [ ] Investigate mid-flight ripgrep latency variance now that Zoekt build time is down to about `451s`
 - [ ] Add path-aware ranking or filtering for `find_symbol` to prioritize business source over test/generated files
 - [ ] Measure and document custom symbol extraction cost to inform keep/remove decision
+- [ ] Decide whether the symbol JSON should remain a simple write-only artifact until Phase 3 or be removed entirely

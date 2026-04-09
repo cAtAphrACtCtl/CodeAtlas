@@ -62,9 +62,10 @@ Started now:
 
 - [x] Compare `find_symbol` against Zoekt-first lexical workflows for definition lookup.
   - Result: `find_symbol` refactored to use Zoekt-first queries with ripgrep fallback. Zoekt `sym:` prefix did not produce usable results on CargoWise; ripgrep fallback works but is slower (~9-12s) and noisier (cross-language/test hits).
-- [ ] Measure the refresh cost added by the current custom symbol extraction path.
+- [~] Measure the refresh cost added by the current custom symbol extraction path.
+  - Progress: the persisted symbol JSON is no longer read in production query paths. Current cost is refresh-time extraction plus a single full-file JSON write; it is not a query-time bottleneck, so a storage-format migration is lower priority than the keep/remove decision and an optional disable flag.
 - [~] Decide whether custom symbol indexing should be kept, limited, decoupled, or removed.
-  - Progress: query path decoupled from custom extraction; extraction still runs but output is unused at query time; formal decision pending.
+  - Progress: query path decoupled from custom extraction; extraction still runs but output is unused at query time; current recommendation is to keep it conditionally, add a config gate, and revisit storage/layout decisions alongside Phase 3 chunking and embeddings.
 - [x] Do not expand custom symbol indexing scope until that decision is made.
 
 ## Deferred work

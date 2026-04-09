@@ -114,12 +114,15 @@ Decision gate:
 
 - determine whether dedicated symbol extraction adds enough value over Zoekt-first lexical workflows and Zoekt's own symbol-aware ranking signals to justify long-term maintenance
 - preliminary evaluation: Zoekt `sym:` prefix queries on CargoWise did not survive exact filtering, so `find_symbol` currently falls back to direct ripgrep for every query on that repository; custom extraction output is now unused at query time but still runs during refresh for metrics and potential future fallback use
+- current implementation detail: the persisted symbol JSON is write-only in production code after the Zoekt-first refactor; it is still generated during refresh for metrics, lifecycle cleanup, and possible future metadata reuse, but `find_symbol` no longer reads it
+- storage note: the current symbol JSON size on CargoWise is noticeable but not a query-time bottleneck because production lookup no longer loads it; any storage-format change should be deferred until the keep/limit/remove decision and the Phase 3 chunking and embedding design are clearer
 - a formal keep, limit, or remove decision for custom symbol extraction is still pending
 
 Remaining work:
 
 - document a formal decision record for Zoekt-first symbol queries versus custom extraction, including measured latency and accuracy comparison
 - decide whether custom symbol extraction should be kept as a background enrichment, limited to specific scenarios, or removed to save refresh cost
+- add an optional config flag to disable background symbol extraction when repositories do not need persisted symbol metadata
 - improve snippet-based symbol kind inference to handle TypeScript modifiers (`declare`, `abstract`) and generics
 - fix `buildBackendQuery` word-boundary regex for `$`-prefixed identifiers
 - evaluate path-aware ranking or filtering to reduce noise from generated trees, test files, and cross-language hits in grep-backed `find_symbol`

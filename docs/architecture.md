@@ -397,7 +397,7 @@ Remaining:
 
 ### Symbol Index Flow
 
-The symbol-aware path has two main execution flows: indexing and lookup.
+The symbol-aware path has two related execution flows today: background symbol extraction during refresh, and lexical-backed symbol lookup at query time.
 
 ```mermaid
 flowchart TD
@@ -417,23 +417,24 @@ flowchart TD
   N[Client calls find_symbol] --> O[MCP server: find_symbol tool]
   O --> P[Handler: findSymbol]
   P --> Q[SearchService.findSymbols]
-  Q --> R[IndexCoordinator.ensureReady]
+  Q --> R[IndexCoordinator.ensureLexicalReady]
   R -->|not ready| D
   R -->|ready| S[SymbolSearchBackend.searchRepository]
-  S --> T[FileSymbolIndexStore.getSymbols]
-  T --> U[Filter by kinds and name match]
-  U --> V[Score and sort symbol results]
-  V --> W[Return SymbolRecord results to MCP client]
+  S --> T[LexicalSearchBackend.searchRepository]
+  T --> U[Infer symbol name and kind from snippet text]
+  U --> V[Filter by kinds and exact or fuzzy name match]
+  V --> W[Score, dedupe, and return SymbolRecord results]
 ```
 
 Execution notes:
 
 - `refresh_repo` is the point where lexical index readiness and symbol index generation are performed together.
 - symbol extraction is file-based and currently only runs on `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`, `.mjs`, and `.cjs` files.
-- `find_symbol` does not re-parse the repository on every query; it reads the locally persisted symbol index and ranks matches from that cache.
+- `find_symbol` does not re-parse the repository on every query. It now queries the lexical backend first (`sym:` on Zoekt, direct search on ripgrep fallback) and then infers symbol records from the returned snippets.
+- the persisted symbol JSON is still written during refresh, but production `find_symbol` no longer reads it. At the moment it is a background artifact for metrics, lifecycle cleanup, and possible future metadata reuse.
 - exact symbol queries filter by exact case-insensitive name before sorting, while non-exact queries still use prefix, substring, and container-name scoring.
 - `read_source` rejects out-of-range `start_line` requests instead of returning inconsistent line ranges.
-- `ensureReady` is the guard between lookup and indexing. If a repository has not been indexed yet, lookup will trigger the refresh path first.
+- `ensureLexicalReady` is the guard between lookup and indexing. If a repository has no usable lexical backend yet, lookup will trigger or reuse the refresh path first.
 - this symbol path is currently experimental and should not drive broader architecture decisions until its value over Zoekt-first workflows is clear.
 
 Operational note:
