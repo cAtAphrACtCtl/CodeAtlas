@@ -363,3 +363,81 @@ test("IndexCoordinator marks lexical state ready before symbol extraction comple
 	assert.equal(finalStatus.symbolState, "ready");
 	assert.equal(finalStatus.serviceTier, "full");
 });
+
+test("IndexCoordinator can skip symbol extraction when disabled by configuration", async (t) => {
+	const tempRoot = await mkdtemp(path.join(os.tmpdir(), "codeatlas-lifecycle-nosymbol-"));
+	t.after(async () => {
+		await rm(tempRoot, { recursive: true, force: true });
+	});
+
+	const repositoryRoot = path.join(tempRoot, "repo");
+	await mkdir(repositoryRoot, { recursive: true });
+	await writeFile(path.join(repositoryRoot, "index.ts"), "export const value = 1;\n", "utf8");
+
+	const repository = {
+		name: "sample",
+		rootPath: repositoryRoot,
+		registeredAt: new Date().toISOString(),
+	};
+	const registry: RepositoryRegistry = {
+		async listRepositories() {
+			return [repository];
+		},
+		async getRepository(name) {
+			return name === repository.name ? repository : null;
+		},
+		async registerRepository() {
+			return repository;
+		},
+	};
+	const statuses = new Map<string, RepositoryIndexStatus>();
+	const metadataStore = {
+		async listIndexStatuses() {
+			return [...statuses.values()];
+		},
+		async getIndexStatus(repo: string) {
+			return statuses.get(repo) ?? null;
+		},
+		async setIndexStatus(status: RepositoryIndexStatus) {
+			statuses.set(status.repo, status);
+		},
+	};
+	let extracted = false;
+	const backend: LexicalSearchBackend = {
+		kind: "mock",
+		async prepareRepository() {
+			return {
+				repo: repository.name,
+				backend: "mock",
+				state: "ready",
+				lastIndexedAt: new Date().toISOString(),
+			};
+		},
+		async searchRepository() {
+			return [];
+		},
+	};
+	const symbolExtractor = {
+		async extractRepository() {
+			extracted = true;
+			return [];
+		},
+	} as unknown as TypeScriptSymbolExtractor;
+
+	const coordinator = new IndexCoordinator(
+		registry,
+		metadataStore,
+		backend,
+		symbolExtractor,
+		new FileSymbolIndexStore(tempRoot),
+		{ enableSymbolExtraction: false },
+	);
+
+	const finalStatus = await coordinator.refreshRepository("sample");
+
+	assert.equal(extracted, false);
+	assert.equal(finalStatus.state, "ready");
+	assert.equal(finalStatus.symbolState, "not_indexed");
+	assert.equal(finalStatus.serviceTier, "lexical-only");
+	assert.match(finalStatus.detail ?? "", /disabled by configuration/i);
+});

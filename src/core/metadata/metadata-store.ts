@@ -15,6 +15,7 @@ export type IndexStatusReason =
 	| "refresh_in_progress"
 	| "refresh_failed"
 	| "repository_stale"
+	| "repository_source_changed"
 	| "repository_root_not_directory"
 	| "ripgrep_unavailable"
 	| "ripgrep_naive_fallback"
@@ -57,6 +58,11 @@ export interface RepositoryIndexStatus {
 	symbolExtractionDurationMs?: number;
 	lastSearchDurationMs?: number;
 	searchBackend?: string;
+
+	// Staleness watch points (used to detect source code changes)
+	sourceRootMtime?: number; // mtime of repository root directory after last refresh
+	indexRootMtime?: number; // mtime of active index directory after last refresh
+	gitHeadMtime?: number; // mtime of .git/HEAD after last refresh (if present)
 }
 
 export function deriveServiceTier(

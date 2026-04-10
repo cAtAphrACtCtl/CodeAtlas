@@ -11,6 +11,8 @@ import type { LexicalSearchBackend } from "../search/lexical-search-backend.js";
 import type { TypeScriptSymbolExtractor } from "../search/symbol-extractor.js";
 import type { SymbolIndexStore } from "../search/symbol-index-store.js";
 import { getLogger, type Logger } from "../logging/logger.js";
+import { stat } from "node:fs/promises";
+import path from "node:path";
 
 export type IndexDeleteTarget = "lexical" | "symbol" | "all";
 
@@ -29,6 +31,10 @@ export interface UnregisterRepositoryResult {
 	errors?: string[];
 }
 
+export interface IndexCoordinatorOptions {
+	enableSymbolExtraction?: boolean;
+}
+
 export class IndexCoordinator {
 	private readonly inFlightRefreshes = new Map<
 		string,
@@ -38,6 +44,7 @@ export class IndexCoordinator {
 		}
 	>();
 	private readonly logger: Logger | undefined;
+	private readonly enableSymbolExtraction: boolean;
 
 	constructor(
 		private readonly registry: RepositoryRegistry,
@@ -45,8 +52,10 @@ export class IndexCoordinator {
 		private readonly lexicalBackend: LexicalSearchBackend,
 		private readonly symbolExtractor: TypeScriptSymbolExtractor,
 		private readonly symbolIndexStore: SymbolIndexStore,
+		options: IndexCoordinatorOptions = {},
 	) {
 		this.logger = getLogger();
+		this.enableSymbolExtraction = options.enableSymbolExtraction ?? true;
 	}
 
 	private logDebug(message: string, details?: Record<string, unknown>): void {
@@ -87,6 +96,39 @@ export class IndexCoordinator {
 			...status,
 			serviceTier: computeServiceTier(status),
 		};
+	}
+
+	private async captureWatchPoints(
+		repository: any,
+		status: RepositoryIndexStatus,
+	): Promise<RepositoryIndexStatus> {
+		try {
+			// Capture repository root directory modification time
+			const repoRootStats = await stat(repository.rootPath);
+			status.sourceRootMtime = repoRootStats.mtimeMs;
+
+			// Try to capture .git/HEAD modification time if present
+			const gitHeadPath = path.join(repository.rootPath, ".git", "HEAD");
+			try {
+				const gitHeadStats = await stat(gitHeadPath);
+				status.gitHeadMtime = gitHeadStats.mtimeMs;
+			} catch {
+				// .git/HEAD doesn't exist or is unreadable; silently skip
+			}
+
+			this.logDebug("watch points captured for staleness detection", {
+				repo: repository.name,
+				sourceRootMtime: status.sourceRootMtime,
+				gitHeadMtime: status.gitHeadMtime,
+			});
+		} catch (error) {
+			this.logDebug("unable to capture watch points", {
+				repo: repository.name,
+				...toErrorDetails(error),
+			});
+		}
+
+		return status;
 	}
 
 	async recordLexicalSearchObservation(
@@ -561,6 +603,45 @@ export class IndexCoordinator {
 				detail: lexicalStatus.detail,
 			});
 			const indexedAt = new Date().toISOString();
+			if (!this.enableSymbolExtraction) {
+				const refreshDurationMs = Math.round(performance.now() - refreshStart);
+				const status = this.withServiceTier({
+					...lexicalStatus,
+					configuredBackend: this.lexicalBackend.kind,
+					...this.buildFallbackDetails(
+						lexicalStatus.activeBackend ?? lexicalStatus.backend,
+						lexicalStatus.reason,
+						lexicalStatus.detail,
+					),
+					jobId: undefined,
+					jobPhase: undefined,
+					jobQueuedAt: undefined,
+					jobStartedAt: undefined,
+					jobUpdatedAt: undefined,
+					progressMessage: undefined,
+					lastSearchDurationMs: existing?.lastSearchDurationMs,
+					searchBackend: existing?.searchBackend,
+					symbolState: "not_indexed",
+					symbolLastIndexedAt: undefined,
+					symbolCount: undefined,
+					detail: lexicalStatus.detail
+						? `${lexicalStatus.detail}; symbol extraction disabled by configuration`
+						: "Symbol extraction disabled by configuration",
+					lastRefreshDurationMs: refreshDurationMs,
+				});
+
+				await this.metadataStore.setIndexStatus(status);
+				this.logDebug("stored final repository status with symbol extraction disabled", {
+					repo: repository.name,
+					backend: status.backend,
+					configuredBackend: status.configuredBackend,
+					state: status.state,
+					symbolState: status.symbolState,
+					detail: status.detail,
+				});
+				return status;
+			}
+
 			let status: RepositoryIndexStatus = {
 				...lexicalStatus,
 				configuredBackend: this.lexicalBackend.kind,
@@ -637,29 +718,32 @@ export class IndexCoordinator {
 				lastRefreshDurationMs: refreshDurationMs,
 			});
 
-			await this.metadataStore.setIndexStatus(status);
-			this.logger?.info("indexer", "repository refresh completed", {
-				event: "index.refresh.complete",
-				repo: repository.name,
-				durationMs: refreshDurationMs,
-				details: {
-					backend: status.backend,
-					configuredBackend: status.configuredBackend,
-					state: status.state,
-					symbolState: status.symbolState,
-					zoektBuildDurationMs: status.zoektBuildDurationMs,
-					symbolExtractionDurationMs: status.symbolExtractionDurationMs,
-				},
-			});
-			this.logDebug("stored final repository status", {
-				repo: repository.name,
+		// Capture watch points for detecting future source code changes
+		status = await this.captureWatchPoints(repository, status);
+
+		await this.metadataStore.setIndexStatus(status);
+		this.logger?.info("indexer", "repository refresh completed", {
+			event: "index.refresh.complete",
+			repo: repository.name,
+			durationMs: refreshDurationMs,
+			details: {
 				backend: status.backend,
 				configuredBackend: status.configuredBackend,
 				state: status.state,
 				symbolState: status.symbolState,
-				detail: status.detail,
-			});
-			return status;
+				zoektBuildDurationMs: status.zoektBuildDurationMs,
+				symbolExtractionDurationMs: status.symbolExtractionDurationMs,
+			},
+		});
+		this.logDebug("stored final repository status", {
+			repo: repository.name,
+			backend: status.backend,
+			configuredBackend: status.configuredBackend,
+			state: status.state,
+			symbolState: status.symbolState,
+			detail: status.detail,
+		});
+		return status;
 		} catch (error) {
 			const failedStatus: RepositoryIndexStatus = this.withServiceTier({
 				...activeIndexingStatus,

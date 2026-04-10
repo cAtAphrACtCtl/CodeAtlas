@@ -33,6 +33,7 @@ function createTestConfig(
 		indexing: {
 			indexBuildTimeoutMs: 120_000,
 			symbolConcurrency: 0,
+			enableSymbolExtraction: true,
 		},
 		search: {
 			defaultLimit: 20,
@@ -230,7 +231,7 @@ test("MCP handlers reject read_source requests when start_line exceeds file leng
 		path.join(tempRoot, "indexes"),
 	);
 	const symbolExtractor = new TypeScriptSymbolExtractor();
-	const symbolSearchBackend = new SymbolSearchBackend(symbolIndexStore);
+	const symbolSearchBackend = new SymbolSearchBackend(backend);
 	const indexCoordinator = new IndexCoordinator(
 		registry,
 		metadataStore,
@@ -295,6 +296,11 @@ test("MCP handlers attach friendly diagnostics when configured Zoekt is unavaila
 					executable: "rg",
 					fallbackToNaiveScan: true,
 				},
+			},
+			indexing: {
+				indexBuildTimeoutMs: 120_000,
+				symbolConcurrency: 0,
+				enableSymbolExtraction: true,
 			},
 			search: {
 				defaultLimit: 20,
@@ -504,7 +510,7 @@ test("MCP handlers expose unregister and delete-index lifecycle flows", async (t
 	);
 	const symbolIndexStore = new FileSymbolIndexStore(path.join(tempRoot, "indexes"));
 	const symbolExtractor = new TypeScriptSymbolExtractor();
-	const symbolSearchBackend = new SymbolSearchBackend(symbolIndexStore);
+	const symbolSearchBackend = new SymbolSearchBackend(backend);
 	const indexCoordinator = new IndexCoordinator(
 		registry,
 		metadataStore,
@@ -612,7 +618,7 @@ test("MCP handlers surface duplicate-root warnings during register and list", as
 			registry,
 			indexCoordinator,
 			backend,
-			new SymbolSearchBackend(symbolIndexStore),
+			new SymbolSearchBackend(backend),
 			{
 				defaultLimit: 20,
 				maxLimit: 100,

@@ -125,19 +125,24 @@ Related docs:
 - [x] Add snippet-based symbol name and kind inference from grep hit text
 - [x] Validate refactored `find_symbol` against real CargoWise index
 - [x] All unit and integration tests passing after refactor (19/19)
-- [ ] Document formal decision record for Zoekt-first queries vs custom extraction
-- [ ] Fix `buildBackendQuery` word-boundary regex for `$`-prefixed identifiers
-- [ ] Extend `inferSymbolKind` to handle `declare class`, `abstract class`, generics
-- [ ] Evaluate path-aware ranking or file-extension filtering to reduce noise in grep-backed `find_symbol`
-- [ ] Add optional config to disable custom symbol extraction now that query path is decoupled
-- [ ] Decide whether custom symbol extraction should remain as background metadata generation after the config gate exists
-- [ ] Optimize O(n²) dedup in `materializeSymbols` to Set-based O(n)
+- [x] Document formal decision record for Zoekt-first queries vs custom extraction
+  - Decision: keep with `enableSymbolExtraction` gate; extraction cost 3.2% of full refresh; symbol JSON write-only until Phase 3. Formal record in `docs/roadmap.md` Phase 2 decision gate.
+- [x] Fix `buildBackendQuery` word-boundary regex for `$`-prefixed identifiers
+- [x] Extend `inferSymbolKind` to handle `declare class`, `abstract class`, generics
+- [x] Evaluate path-aware ranking or file-extension filtering to reduce noise in grep-backed `find_symbol`
+  - Implemented `scoreSymbolPath`: build artifacts (`bin/`, `obj/`, `publish/`, `dist/`) penalised -30; vendor (`node_modules/`, `paket-files/`, `packages/`) penalised -30; test files (`tests/`, `*.test.*`, `*.spec.*`) penalised -20. Score is additive with name-based score in sort only; filter step is unchanged.
+- [x] Add optional config to disable custom symbol extraction now that query path is decoupled
+- [x] Decide whether custom symbol extraction should remain as background metadata generation after the config gate exists
+  - Decision: yes, keep enabled by default behind `enableSymbolExtraction`; re-evaluate at Phase 3.
+- [x] Optimize O(n²) dedup in `materializeSymbols` to Set-based O(n)
 
 ## 10. Next recommended slice
 
 - [x] Finish staged active/staging index promotion so background builds can preserve a last-known-good Zoekt corpus
 - [x] Re-measure CargoWise after the symbol traversal pruning already landed
 - [ ] Investigate mid-flight ripgrep latency variance now that Zoekt build time is down to about `451s`
-- [ ] Add path-aware ranking or filtering for `find_symbol` to prioritize business source over test/generated files
-- [ ] Measure and document custom symbol extraction cost to inform keep/remove decision
-- [ ] Decide whether the symbol JSON should remain a simple write-only artifact until Phase 3 or be removed entirely
+- [x] Add path-aware ranking or filtering for `find_symbol` to prioritize business source over test/generated files
+- [x] Measure and document custom symbol extraction cost to inform keep/remove decision
+  - CargoWise measurement: `symbolExtractionDurationMs = 14787ms` out of `lastRefreshDurationMs = 466519ms` (~3.2% of total refresh). Symbol count: 20815. Overhead is small; extraction is not a performance blocker.
+- [~] Decide whether the symbol JSON should remain a simple write-only artifact until Phase 3 or be removed entirely
+  - Current status: write-only in production (query path uses Zoekt + ripgrep). Cost is low. Recommendation: keep with config gate (`enableSymbolExtraction`) until Phase 3 chunking/embeddings decisions are made.

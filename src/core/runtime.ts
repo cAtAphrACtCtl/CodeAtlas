@@ -106,6 +106,7 @@ export async function createCodeAtlasServices(
 		lexicalBackend,
 		symbolExtractor,
 		symbolIndexStore,
+		{ enableSymbolExtraction: config.indexing.enableSymbolExtraction },
 	);
 	const sourceReader = new FileSystemSourceReader();
 	const searchService = new SearchService(

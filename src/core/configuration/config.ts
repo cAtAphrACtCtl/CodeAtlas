@@ -42,6 +42,8 @@ export interface IndexingConfig {
 	indexBuildTimeoutMs: number;
 	/** Symbol extraction concurrency limit. Default: unbounded (0 = no limit). */
 	symbolConcurrency: number;
+	/** Whether background symbol extraction and symbol JSON persistence are enabled. */
+	enableSymbolExtraction: boolean;
 }
 
 export interface CodeAtlasConfig {
@@ -204,6 +206,7 @@ export function defaultConfig(baseDir = process.cwd()): CodeAtlasConfig {
 		indexing: {
 			indexBuildTimeoutMs: 120_000,
 			symbolConcurrency: 0,
+			enableSymbolExtraction: true,
 		},
 		search: {
 			defaultLimit: 20,

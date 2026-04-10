@@ -476,6 +476,15 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				});
 			}
 
+			// Check if source code has changed since last refresh using watch points
+			const staleCheck = await this.checkSourceStaleness(
+				repository,
+				existingStatus,
+			);
+			if (staleCheck) {
+				return finalizeReadiness(staleCheck);
+			}
+
 			this.logDebug("repository readiness verified", {
 				repo: repository.name,
 				indexDir,
@@ -504,6 +513,75 @@ export class ZoektLexicalSearchBackend implements LexicalSearchBackend {
 				detail: `Unable to inspect Zoekt index directory for repository ${repository.name}: ${detail}`,
 			});
 		}
+	}
+
+	private async checkSourceStaleness(
+		repository: RepositoryRecord,
+		existingStatus?: RepositoryIndexStatus,
+	): Promise<{
+		ready: false;
+		state: "stale";
+		reason: "repository_source_changed";
+		detail: string;
+	} | null> {
+		// If no watch points are stored, assume not stale
+		if (!existingStatus?.sourceRootMtime) {
+			return null;
+		}
+
+		try {
+			// Check if repository root has been modified since last refresh
+			const repoRootStats = await stat(repository.rootPath);
+			if (repoRootStats.mtimeMs > existingStatus.sourceRootMtime) {
+				this.logDebug("repository marked stale: source root modified", {
+					repo: repository.name,
+					repoRootMtime: repoRootStats.mtimeMs,
+					lastRefreshMtime: existingStatus.sourceRootMtime,
+				});
+				return {
+					ready: false,
+					state: "stale",
+					reason: "repository_source_changed",
+					detail: "Repository source files have been modified since last refresh",
+				};
+			}
+		} catch (error) {
+			// If we can't check the source root, silently skip (assume not stale to avoid false positives)
+			this.logDebug("unable to check source root mtime for staleness", {
+				repo: repository.name,
+				...toErrorDetails(error),
+			});
+		}
+
+		// Check .git/HEAD if present and timestamps are available
+		if (existingStatus.lastIndexedAt) {
+			const gitHeadPath = path.join(repository.rootPath, ".git", "HEAD");
+			try {
+				const gitHeadStats = await stat(gitHeadPath);
+				const lastIndexedDate = new Date(existingStatus.lastIndexedAt);
+				const gitHeadDate = new Date(gitHeadStats.mtimeMs);
+				if (gitHeadDate > lastIndexedDate) {
+					this.logDebug(
+						"repository marked stale: .git/HEAD is newer than last index",
+						{
+							repo: repository.name,
+							gitHeadMtime: gitHeadDate.toISOString(),
+							lastIndexedAt: lastIndexedDate.toISOString(),
+						},
+					);
+					return {
+						ready: false,
+						state: "stale",
+						reason: "repository_source_changed",
+						detail: ".git/HEAD is newer than the last index refresh timestamp",
+					};
+				}
+			} catch {
+				// .git/HEAD doesn't exist or is unreadable, skip check (not a git repo)
+			}
+		}
+
+		return null;
 	}
 
 	private async withBootstrapFallback<T>(

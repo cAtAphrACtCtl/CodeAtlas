@@ -18,7 +18,15 @@ function buildBackendQuery(
 	}
 
 	const escapedQuery = escapeRegExp(request.query);
-	return request.exact ? `\\b${escapedQuery}\\b` : escapedQuery;
+	if (!request.exact) {
+		return escapedQuery;
+	}
+
+	const startsWithWord = /^\w/.test(request.query);
+	const endsWithWord = /\w$/.test(request.query);
+	return startsWithWord && endsWithWord
+		? `\\b${escapedQuery}\\b`
+		: `(^|[^\\w$])${escapedQuery}($|[^\\w$])`;
 }
 
 function inferSymbolNameFromSnippet(
@@ -59,13 +67,37 @@ function inferSymbolNameFromSnippet(
 
 function inferSymbolKind(snippet: string, name: string): SymbolRecord["kind"] {
 	const escapedName = escapeRegExp(name);
+	const genericSuffix = "(?:<[^>{}]+>)?";
+	const declarationPrefix =
+		"\\b(?:export\\s+)?(?:default\\s+)?(?:declare\\s+)?(?:abstract\\s+)?";
 	const keywordChecks: Array<[RegExp, SymbolRecord["kind"]]> = [
-		[new RegExp(`\\bclass\\s+${escapedName}\\b`, "i"), "class"],
-		[new RegExp(`\\binterface\\s+${escapedName}\\b`, "i"), "interface"],
-		[new RegExp(`\\benum\\s+${escapedName}\\b`, "i"), "enum"],
-		[new RegExp(`\\btype\\s+${escapedName}\\b`, "i"), "type_alias"],
-		[new RegExp(`\\bfunction\\s+${escapedName}\\b`, "i"), "function"],
-		[new RegExp(`\\b(?:const|let|var)\\s+${escapedName}\\b`, "i"), "variable"],
+		[
+			new RegExp(`${declarationPrefix}class\\s+${escapedName}${genericSuffix}\\b`, "i"),
+			"class",
+		],
+		[
+			new RegExp(`${declarationPrefix}interface\\s+${escapedName}${genericSuffix}\\b`, "i"),
+			"interface",
+		],
+		[
+			new RegExp(`${declarationPrefix}enum\\s+${escapedName}\\b`, "i"),
+			"enum",
+		],
+		[
+			new RegExp(`${declarationPrefix}type\\s+${escapedName}${genericSuffix}\\b`, "i"),
+			"type_alias",
+		],
+		[
+			new RegExp(
+				`${declarationPrefix}(?:async\\s+)?function\\*?\\s+${escapedName}${genericSuffix}\\b`,
+				"i",
+			),
+			"function",
+		],
+		[
+			new RegExp(`${declarationPrefix}(?:const|let|var)\\s+${escapedName}\\b`, "i"),
+			"variable",
+		],
 	];
 
 	for (const [pattern, kind] of keywordChecks) {
@@ -83,6 +115,33 @@ function inferSymbolKind(snippet: string, name: string): SymbolRecord["kind"] {
 	}
 
 	return "variable";
+}
+
+/**
+ * Returns a score adjustment based on the file path of a symbol hit.
+ * Source files receive no penalty; test, generated, or vendor paths are
+ * down-ranked so that business source definitions sort to the top.
+ * This value is added to the name-based score in the sort comparator only —
+ * it does not affect whether a hit is included in results.
+ */
+export function scoreSymbolPath(filePath: string): number {
+	const p = filePath.toLowerCase().replace(/\\/g, "/");
+	// Build artifact directories (Zoekt already excludes these, but ripgrep fallback may include them)
+	if (/(^|\/)(?:bin|obj|publish|dist)\//.test(p)) {
+		return -30;
+	}
+	// Vendor / package directories
+	if (/(^|\/)(?:node_modules|paket-files|packages)\//.test(p)) {
+		return -30;
+	}
+	// Test files and directories
+	if (
+		/(^|\/)(?:tests?|__tests__|spec)\//.test(p) ||
+		/\.(test|spec)\.[a-z]+$/.test(p)
+	) {
+		return -20;
+	}
+	return 0;
 }
 
 function toSymbolRecord(
@@ -220,20 +279,26 @@ export class SymbolSearchBackend {
 				return score > 0;
 				})
 				.sort(
-					(left, right) =>
-						scoreSymbol(right, request.query, exactMode) -
-						scoreSymbol(left, request.query, exactMode),
+					(left, right) => {
+						const scoreRight =
+							scoreSymbol(right, request.query, exactMode) +
+							scoreSymbolPath(right.path);
+						const scoreLeft =
+							scoreSymbol(left, request.query, exactMode) +
+							scoreSymbolPath(left.path);
+						return scoreRight - scoreLeft;
+					},
 				);
 
-			const deduped = filtered.filter((symbol, index, allSymbols) => {
+			const seen = new Set<string>();
+			const deduped = filtered.filter((symbol) => {
 				const key = `${symbol.repo}:${symbol.path}:${symbol.start_line}:${symbol.name}`;
-				return (
-					allSymbols.findIndex(
-						(candidate) =>
-							`${candidate.repo}:${candidate.path}:${candidate.start_line}:${candidate.name}` ===
-							key,
-					) === index
-				);
+				if (seen.has(key)) {
+					return false;
+				}
+
+				seen.add(key);
+				return true;
 			});
 
 			return {

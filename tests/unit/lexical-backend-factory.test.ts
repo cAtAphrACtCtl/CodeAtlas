@@ -106,7 +106,7 @@ test("ZoektLexicalSearchBackend uses separate timeouts for availability checks a
 		"-file_limit",
 		String(256 * 1024),
 		"-ignore_dirs",
-		".git,node_modules,dist,data,.next",
+		".git,bin,obj,publish,node_modules,dist,data,.next",
 	]);
 	const activeDir = getRepoIndexDir(
 		path.join(repositoryRoot, "indexes"),

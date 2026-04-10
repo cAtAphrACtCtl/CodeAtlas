@@ -20,9 +20,10 @@ Current phase view:
    - Measure initial indexing time, repeated refresh time, and query latency.
    - Verify MCP behavior when indexes are old, refreshing, or unavailable.
 2. Harden freshness, fallback, and operator-visible status.
-   - Decide how repository updates mark an index stale before the next refresh.
-   - Keep the last successful lexical index available while a refresh is running.
-   - Document when ripgrep fallback is acceptable versus a hard failure.
+   - [~] Decide how repository updates mark an index stale before the next refresh.
+     - **Implementation**: Watch points captured after successful refresh (`sourceRootMtime`, `gitHeadMtime`). If source root mtime is newer or .git/HEAD is newer than `lastIndexedAt`, marked stale with reason `repository_source_changed`. Deferred: hash-based staleness for Phase 3 / production.
+   - [ ] Keep the last successful lexical index available while a refresh is running.
+   - [ ] Document when ripgrep fallback is acceptable versus a hard failure.
 3. Make a keep / limit / remove decision on custom symbol indexing.
    - Compare `find_symbol` against Zoekt-first lexical workflows for definition lookup.
    - Measure the refresh cost added by the current custom symbol extraction path.
@@ -62,10 +63,10 @@ Started now:
 
 - [x] Compare `find_symbol` against Zoekt-first lexical workflows for definition lookup.
   - Result: `find_symbol` refactored to use Zoekt-first queries with ripgrep fallback. Zoekt `sym:` prefix did not produce usable results on CargoWise; ripgrep fallback works but is slower (~9-12s) and noisier (cross-language/test hits).
-- [~] Measure the refresh cost added by the current custom symbol extraction path.
-  - Progress: the persisted symbol JSON is no longer read in production query paths. Current cost is refresh-time extraction plus a single full-file JSON write; it is not a query-time bottleneck, so a storage-format migration is lower priority than the keep/remove decision and an optional disable flag.
-- [~] Decide whether custom symbol indexing should be kept, limited, decoupled, or removed.
-  - Progress: query path decoupled from custom extraction; extraction still runs but output is unused at query time; current recommendation is to keep it conditionally, add a config gate, and revisit storage/layout decisions alongside Phase 3 chunking and embeddings.
+- [x] Measure the refresh cost added by the current custom symbol extraction path.
+  - Result: CargoWise measurement: `symbolExtractionDurationMs = 14787ms` (~14.8s) out of `lastRefreshDurationMs = 466519ms` (~467s total) — 3.2% overhead. Symbol count 20815. Not a performance blocker.
+- [x] Decide whether custom symbol indexing should be kept, limited, decoupled, or removed.
+  - Decision (April 2026): keep with `enableSymbolExtraction` config gate enabled by default. Symbol JSON remains write-only at query time. Re-evaluate for removal or promotion at Phase 3. Operators can set `enableSymbolExtraction: false` to skip extraction (~15s saving per full CargoWise refresh).
 - [x] Do not expand custom symbol indexing scope until that decision is made.
 
 ## Deferred work

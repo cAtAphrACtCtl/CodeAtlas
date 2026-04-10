@@ -116,17 +116,18 @@ Decision gate:
 - preliminary evaluation: Zoekt `sym:` prefix queries on CargoWise did not survive exact filtering, so `find_symbol` currently falls back to direct ripgrep for every query on that repository; custom extraction output is now unused at query time but still runs during refresh for metrics and potential future fallback use
 - current implementation detail: the persisted symbol JSON is write-only in production code after the Zoekt-first refactor; it is still generated during refresh for metrics, lifecycle cleanup, and possible future metadata reuse, but `find_symbol` no longer reads it
 - storage note: the current symbol JSON size on CargoWise is noticeable but not a query-time bottleneck because production lookup no longer loads it; any storage-format change should be deferred until the keep/limit/remove decision and the Phase 3 chunking and embedding design are clearer
-- a formal keep, limit, or remove decision for custom symbol extraction is still pending
+- **formal decision (April 2026):** keep custom symbol extraction enabled by default behind the `enableSymbolExtraction` config gate; overhead on CargoWise is ~14.8s / ~467s total refresh (~3.2%), which is negligible; the symbol JSON remains write-only at query time; extraction will be re-evaluated for removal or promotion once Phase 3 chunking and embedding design is clearer; operators who do not need persisted symbol metadata can set `enableSymbolExtraction: false` to shave ~15s per full refresh
 
 Remaining work:
 
-- document a formal decision record for Zoekt-first symbol queries versus custom extraction, including measured latency and accuracy comparison
-- decide whether custom symbol extraction should be kept as a background enrichment, limited to specific scenarios, or removed to save refresh cost
-- add an optional config flag to disable background symbol extraction when repositories do not need persisted symbol metadata
-- improve snippet-based symbol kind inference to handle TypeScript modifiers (`declare`, `abstract`) and generics
-- fix `buildBackendQuery` word-boundary regex for `$`-prefixed identifiers
-- evaluate path-aware ranking or filtering to reduce noise from generated trees, test files, and cross-language hits in grep-backed `find_symbol`
+- ~~document a formal decision record for Zoekt-first symbol queries versus custom extraction, including measured latency and accuracy comparison~~ (formal decision recorded above)
+- ~~decide whether custom symbol extraction should be kept as a background enrichment, limited to specific scenarios, or removed to save refresh cost~~ (keep with config gate; see decision above)
+- ~~add an optional config flag to disable background symbol extraction when repositories do not need persisted symbol metadata~~ (`enableSymbolExtraction` config gate added)
+- ~~improve snippet-based symbol kind inference to handle TypeScript modifiers (`declare`, `abstract`) and generics~~ (done; `inferSymbolKind` extended)
+- ~~fix `buildBackendQuery` word-boundary regex for `$`-prefixed identifiers~~ (done; conditional boundary pattern)
+- ~~evaluate path-aware ranking or filtering to reduce noise from generated trees, test files, and cross-language hits in grep-backed `find_symbol`~~ (done; `scoreSymbolPath` added with -20/-30 penalties for test/build/vendor paths)
 - keep symbol failures explicit and non-blocking for lexical validation work
+- investigate mid-flight ripgrep latency variance for grep-backed `find_symbol` on large repositories
 
 Exit criteria:
 
@@ -159,7 +160,7 @@ Planned work:
 - benchmark suites for large repositories and repeated refresh after repo changes
 - contract and relevance regression checks for Zoekt-first workflows
 - more explicit user-visible diagnostics for ready, stale, partial, and error states
-- decision records for Zoekt-first workflows versus optional custom symbol indexing (preliminary: `find_symbol` now uses Zoekt-first lexical queries; formal decision pending)
+- decision records for Zoekt-first workflows versus optional custom symbol indexing: formal decision recorded in Phase 2 section above; `find_symbol` uses Zoekt-first lexical queries; `enableSymbolExtraction` config gate added; extraction cost measured at ~3.2% of full CargoWise refresh
 - detailed large-repository indexing design and phased implementation plan captured in `docs/large-repository-indexing-design.md`
 
 Exit criteria:

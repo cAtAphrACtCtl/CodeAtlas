@@ -5,7 +5,7 @@ import type { IndexCoordinator } from "../../src/core/indexer/index-coordinator.
 import type { RepositoryRegistry } from "../../src/core/registry/repository-registry.js";
 import type { LexicalSearchBackend } from "../../src/core/search/lexical-search-backend.js";
 import { SearchService } from "../../src/core/search/search-service.js";
-import { SymbolSearchBackend } from "../../src/core/search/symbol-search-backend.js";
+import { scoreSymbolPath, SymbolSearchBackend } from "../../src/core/search/symbol-search-backend.js";
 
 test("SearchService returns lexical results using the stable result contract", async () => {
 	const repository = {
@@ -888,5 +888,291 @@ test("SearchService falls back to direct grep when a Zoekt symbol query returns 
 	assert.equal(response.results.length, 1);
 	assert.equal(response.results[0]?.name, "registerPopoverNavigation");
 	assert.equal(response.results[0]?.kind, "function");
+});
+
+test("SearchService exact symbol search handles identifiers with dollar prefixes", async () => {
+	const repository = {
+		name: "alpha",
+		rootPath: "C:/repos/alpha",
+		registeredAt: new Date().toISOString(),
+	};
+
+	const registry: RepositoryRegistry = {
+		async listRepositories() {
+			return [repository];
+		},
+		async getRepository(name) {
+			return name === repository.name ? repository : null;
+		},
+		async registerRepository() {
+			return repository;
+		},
+	};
+
+	const indexCoordinator = {
+		async ensureReady() {
+			throw new Error("not used");
+		},
+		async ensureLexicalReady() {
+			return {
+				repo: repository.name,
+				backend: "ripgrep",
+				activeBackend: "ripgrep",
+				state: "ready",
+			};
+		},
+		async ensureSymbolReady() {
+			throw new Error("not used");
+		},
+		async refreshRepository() {
+			throw new Error("not used");
+		},
+		async getStatus() {
+			return [];
+		},
+	} as unknown as IndexCoordinator;
+
+	const backend: LexicalSearchBackend = {
+		kind: "ripgrep",
+		async prepareRepository() {
+			return {
+				repo: repository.name,
+				backend: "ripgrep",
+				state: "ready",
+			};
+		},
+		async searchRepository(_repository, request) {
+			assert.equal(request.query, "(^|[^\\w$])\\$atlas($|[^\\w$])");
+			return [
+				{
+					path: "src/example.ts",
+					startLine: 1,
+					endLine: 1,
+					snippet: "export const $atlas = true;",
+					score: 100,
+				},
+			];
+		},
+	};
+
+	const service = new SearchService(
+		registry,
+		indexCoordinator,
+		backend,
+		new SymbolSearchBackend(backend),
+		{
+			defaultLimit: 20,
+			maxLimit: 100,
+			maxBytesPerFile: 256 * 1024,
+		},
+	);
+
+	const response = await service.findSymbols({ query: "$atlas", exact: true });
+
+	assert.equal(response.results.length, 1);
+	assert.equal(response.results[0]?.name, "$atlas");
+	assert.equal(response.results[0]?.kind, "variable");
+});
+
+test("SearchService infers class kind for abstract generic class declarations", async () => {
+	const repository = {
+		name: "alpha",
+		rootPath: "C:/repos/alpha",
+		registeredAt: new Date().toISOString(),
+	};
+
+	const registry: RepositoryRegistry = {
+		async listRepositories() {
+			return [repository];
+		},
+		async getRepository(name) {
+			return name === repository.name ? repository : null;
+		},
+		async registerRepository() {
+			return repository;
+		},
+	};
+
+	const indexCoordinator = {
+		async ensureReady() {
+			throw new Error("not used");
+		},
+		async ensureLexicalReady() {
+			return {
+				repo: repository.name,
+				backend: "ripgrep",
+				activeBackend: "ripgrep",
+				state: "ready",
+			};
+		},
+		async ensureSymbolReady() {
+			throw new Error("not used");
+		},
+		async refreshRepository() {
+			throw new Error("not used");
+		},
+		async getStatus() {
+			return [];
+		},
+	} as unknown as IndexCoordinator;
+
+	const backend: LexicalSearchBackend = {
+		kind: "ripgrep",
+		async prepareRepository() {
+			return {
+				repo: repository.name,
+				backend: "ripgrep",
+				state: "ready",
+			};
+		},
+		async searchRepository() {
+			return [
+				{
+					path: "src/example.ts",
+					startLine: 4,
+					endLine: 4,
+					snippet: "export abstract class AtlasService<T> {",
+					score: 100,
+				},
+			];
+		},
+	};
+
+	const service = new SearchService(
+		registry,
+		indexCoordinator,
+		backend,
+		new SymbolSearchBackend(backend),
+		{
+			defaultLimit: 20,
+			maxLimit: 100,
+			maxBytesPerFile: 256 * 1024,
+		},
+	);
+
+	const response = await service.findSymbols({
+		query: "AtlasService",
+		exact: true,
+	});
+
+	assert.equal(response.results.length, 1);
+	assert.equal(response.results[0]?.name, "AtlasService");
+	assert.equal(response.results[0]?.kind, "class");
+});
+
+test("scoreSymbolPath returns 0 for normal source files", () => {
+	assert.equal(scoreSymbolPath("src/core/search/symbol-search-backend.ts"), 0);
+	assert.equal(scoreSymbolPath("lib/utils/helpers.ts"), 0);
+	assert.equal(scoreSymbolPath("index.ts"), 0);
+});
+
+test("scoreSymbolPath penalises test files and directories", () => {
+	assert.equal(scoreSymbolPath("tests/unit/foo.test.ts"), -20);
+	assert.equal(scoreSymbolPath("src/foo.spec.ts"), -20);
+	assert.equal(scoreSymbolPath("__tests__/bar.ts"), -20);
+	assert.equal(scoreSymbolPath("spec/integration/baz.ts"), -20);
+});
+
+test("scoreSymbolPath penalises build artifact and vendor directories", () => {
+	assert.equal(scoreSymbolPath("bin/Release/foo.dll"), -30);
+	assert.equal(scoreSymbolPath("obj/Debug/bar.ts"), -30);
+	assert.equal(scoreSymbolPath("publish/app.js"), -30);
+	assert.equal(scoreSymbolPath("dist/bundle.js"), -30);
+	assert.equal(scoreSymbolPath("node_modules/lodash/index.js"), -30);
+	assert.equal(scoreSymbolPath("paket-files/vendor/lib.ts"), -30);
+});
+
+test("scoreSymbolPath ranks source results above test results", () => {
+	const sourceScore = 120 + scoreSymbolPath("src/core/MyService.ts");
+	const testScore = 120 + scoreSymbolPath("tests/unit/MyService.test.ts");
+	assert.ok(sourceScore > testScore, "source file should outrank test file at same name-score");
+});
+
+test("SearchService path-aware ranking places source file above test file for same query", async () => {
+	const repository = {
+		name: "alpha",
+		rootPath: "C:/repos/alpha",
+		registeredAt: new Date().toISOString(),
+	};
+
+	const registry: RepositoryRegistry = {
+		async listRepositories() {
+			return [repository];
+		},
+		async getRepository(name) {
+			return name === repository.name ? repository : null;
+		},
+		async registerRepository() {
+			return repository;
+		},
+	};
+
+	const indexCoordinator = {
+		async ensureReady() {
+			throw new Error("not used");
+		},
+		async ensureLexicalReady() {
+			return {
+				repo: repository.name,
+				backend: "ripgrep",
+				activeBackend: "ripgrep",
+				state: "ready",
+			};
+		},
+		async ensureSymbolReady() {
+			throw new Error("not used");
+		},
+		async refreshRepository() {
+			throw new Error("not used");
+		},
+		async getStatus() {
+			return [];
+		},
+	} as unknown as IndexCoordinator;
+
+	// Backend returns the test-file hit first, then the source-file hit
+	const backend: LexicalSearchBackend = {
+		kind: "ripgrep",
+		async prepareRepository() {
+			return { repo: repository.name, backend: "ripgrep", state: "ready" };
+		},
+		async searchRepository() {
+			return [
+				{
+					path: "tests/unit/MyService.test.ts",
+					startLine: 1,
+					endLine: 1,
+					snippet: "class MyService {",
+					score: 100,
+				},
+				{
+					path: "src/core/MyService.ts",
+					startLine: 3,
+					endLine: 3,
+					snippet: "export class MyService {",
+					score: 100,
+				},
+			];
+		},
+	};
+
+	const service = new SearchService(
+		registry,
+		indexCoordinator,
+		backend,
+		new SymbolSearchBackend(backend),
+		{
+			defaultLimit: 20,
+			maxLimit: 100,
+			maxBytesPerFile: 256 * 1024,
+		},
+	);
+
+	const response = await service.findSymbols({ query: "MyService", exact: true });
+
+	assert.equal(response.results.length, 2);
+	// Source file must rank above the test file
+	assert.equal(response.results[0]?.path, "src/core/MyService.ts");
+	assert.equal(response.results[1]?.path, "tests/unit/MyService.test.ts");
 });
 

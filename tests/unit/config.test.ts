@@ -155,6 +155,7 @@ test("defaultConfig includes indexing section with defaults", () => {
 	assert.deepEqual(config.indexing, {
 		indexBuildTimeoutMs: 120_000,
 		symbolConcurrency: 0,
+		enableSymbolExtraction: true,
 	});
 });
 
@@ -171,6 +172,7 @@ test("loadConfig merges indexing settings from config file", async (t) => {
 			indexing: {
 				indexBuildTimeoutMs: 1800000,
 				symbolConcurrency: 4,
+				enableSymbolExtraction: false,
 			},
 		}),
 		"utf8",
@@ -179,6 +181,7 @@ test("loadConfig merges indexing settings from config file", async (t) => {
 	const config = await loadConfig(configPath, tempDir);
 	assert.equal(config.indexing.indexBuildTimeoutMs, 1800000);
 	assert.equal(config.indexing.symbolConcurrency, 4);
+	assert.equal(config.indexing.enableSymbolExtraction, false);
 });
 
 test("loadConfig uses default indexing settings when not specified", async (t) => {
@@ -193,6 +196,7 @@ test("loadConfig uses default indexing settings when not specified", async (t) =
 	const config = await loadConfig(configPath, tempDir);
 	assert.equal(config.indexing.indexBuildTimeoutMs, 120_000);
 	assert.equal(config.indexing.symbolConcurrency, 0);
+	assert.equal(config.indexing.enableSymbolExtraction, true);
 });
 
 test("loadConfig allows partial indexing override", async (t) => {
@@ -213,5 +217,6 @@ test("loadConfig allows partial indexing override", async (t) => {
 	const config = await loadConfig(configPath, tempDir);
 	assert.equal(config.indexing.indexBuildTimeoutMs, 600000);
 	assert.equal(config.indexing.symbolConcurrency, 0);
+	assert.equal(config.indexing.enableSymbolExtraction, true);
 });
 
