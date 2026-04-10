@@ -17,7 +17,7 @@ Status today:
 - `code_search` is implemented behind a lexical backend abstraction
 - Zoekt integration is present and is the intended primary lexical backend
 - ripgrep remains available as a bootstrap or development fallback
-- `find_symbol` is implemented with an experimental local TS and JS symbol indexing path
+- `find_symbol` is implemented with a lexical-first query path and snippet-based symbol inference; background TS/JS symbol extraction remains an experimental enrichment path
 - `semantic_search` and `hybrid_search` already exist as stable MCP contract surfaces but remain placeholder responses rather than active workstreams
 - initial explicit index states for `indexing` and `stale` are now in place alongside `not_indexed`, `ready`, and `error`
 

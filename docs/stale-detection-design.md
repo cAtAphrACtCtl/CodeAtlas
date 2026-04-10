@@ -1,24 +1,29 @@
-# Stale Index Detection Design
+# Stale Index Detection Status
 
-## Problem
+This document records current implementation status for stale detection.
 
-Currently, `stale` state is only triggered when readiness verification fails (missing index files, Zoekt unavailable, backend mismatch). It does not track whether the repository source code has actually changed since the last refresh.
+## Original Problem
 
-This creates a false `ready` state: an index can be marked `ready` but become out-of-date when source files are modified, deleted, or new files added.
+`stale` state originally depended on lexical readiness failures only (missing shards, backend mismatch, backend unavailable) and did not detect repository source changes after a successful refresh.
 
-## Solution: File System Watch Point
+## Current Implementation
 
-Capture a "watch point" at the end of each successful refresh:
-- Directory modification time of the repository root
-- Total file count snapshot
-- Last modification time of `.git/HEAD` (if present)
+CodeAtlas now captures timestamp watch points after successful refresh and checks them during lexical readiness verification.
 
-On next `verifyRepositoryReady()`, check if:
-1. Repository root directory has been modified since last refresh
-2. Active index directory has been modified since repository root (suggests index was not refreshed after source change)
-3. `.git/HEAD` exists and is newer than `lastIndexedAt` (suggests new commits)
+Captured watch points:
 
-If any condition is true → mark `stale` with reason `"repository_source_changed"`.
+- `sourceRootMtime` from repository root directory
+- `gitHeadMtime` from `.git/HEAD` when present
+
+Current stale checks in `verifyRepositoryReady()`:
+
+1. repository root mtime newer than stored `sourceRootMtime`
+2. `.git/HEAD` mtime newer than `lastIndexedAt`
+
+If either condition is true, readiness returns:
+
+- `state: "stale"`
+- `reason: "repository_source_changed"`
 
 ## State Machine
 
@@ -31,7 +36,7 @@ indexing
     ↓
   [success]
     ↓
-ready  ← [watch point captured: repoMtime, indexMtime, gitHeadMtime]
+ready  ← [watch points captured: sourceRootMtime, gitHeadMtime]
     ↓
   [source files change]
     ↓
@@ -44,86 +49,49 @@ indexing
 ready
 ```
 
-## Metadata Extensions
+## Metadata Fields
 
-Add to `RepositoryIndexStatus`:
-```typescript
-// Watch points from last successful refresh (used to detect stale)
-sourceRootMtime?: number;        // mtime of repository root directory
-indexRootMtime?: number;         // mtime of active index directory
-gitHeadMtime?: number;           // mtime of .git/HEAD if present
-sourceFileCount?: number;        // total file count at refresh time (approximate)
-```
-
-## Verification Logic
-
-In `verifyRepositoryReady()`:
+`RepositoryIndexStatus` includes:
 
 ```typescript
-// After existing checks pass, add:
-if (existingStatus?.sourceRootMtime) {
-  const repoRootStats = await stat(repository.rootPath);
-  if (repoRootStats.mtimeMs > existingStatus.sourceRootMtime) {
-    return finalizeReadiness({
-      ready: false,
-      state: "stale",
-      reason: "repository_source_changed",
-      detail: "Repository source files have been modified since last refresh",
-    });
-  }
-}
-
-// Check git HEAD if present
-const gitHeadPath = path.join(repository.rootPath, ".git", "HEAD");
-try {
-  const gitHeadStats = await stat(gitHeadPath);
-  if (existingStatus?.lastIndexedAt && 
-      new Date(gitHeadStats.mtimeMs).toISOString() > existingStatus.lastIndexedAt) {
-    return finalizeReadiness({
-      ready: false,
-      state: "stale",
-      reason: "repository_source_changed",
-      detail: ".git/HEAD is newer than last refresh timestamp",
-    });
-  }
-} catch {
-  // .git/HEAD doesn't exist or is unreadable, skip check
-}
+sourceRootMtime?: number;
+indexRootMtime?: number;
+gitHeadMtime?: number;
 ```
 
-## Refresh Behavior
+Notes:
 
-After successful refresh:
-1. Capture `sourceRootMtime = repository.rootPath mtime`
-2. Capture `indexRootMtime = active index directory mtime`
-3. Capture `gitHeadMtime = .git/HEAD mtime` if present
-4. Update `RepositoryIndexStatus` with these values
-5. Set state to `ready`
+- `sourceRootMtime` and `gitHeadMtime` are captured and used today.
+- `indexRootMtime` exists in the status type but is not actively captured and compared in the current implementation.
 
-## Fallback Behavior
+## Current Fallback Behavior
 
-If watchpoint capture fails (permission denied, file doesn't exist):
-- Silently skip watch point capture
-- Index remains `ready` (no false stale)
-- Next verification will compare existing watch points, not error
+If watch-point capture fails (permission denied, file missing, unreadable):
 
-If source file check fails:
-- Log debug message
-- Assume not stale (conservative; could drift but continues service)
-- Do not transition to `error` state
+- capture is skipped
+- index remains `ready`
+- no transition to `error`
 
-## Testing
+If source-change checks fail at verification time:
 
-1. Unit: `verifyRepositoryReady()` recognizes stale when source mtime is newer
-2. Unit: `verifyRepositoryReady()` recognizes stale when .git/HEAD is newer
-3. Unit: Stale is not reported if mtime is older or equal
-4. Integration: Full refresh captures watch points, then modify source, verify stale detected
-5. Integration: After refresh, stale clears
+- debug logging is emitted
+- stale transition is skipped for that failed check
+- no transition to `error`
 
-## Defer for Phase 3
+## Testing Status
 
-- Timestamp-based watch points are fragile on distributed or time-sync platforms
-- Consider replacing with hash-based watch points (hash directory tree, cache it)
-- Would require `sourceTreeHashSnapshot?: string` field
-- Phase 2.5: acceptable for single-machine / local development
-- Phase 3: consider hash-based staleness for production deployment
+Implemented:
+
+- integration coverage for refresh-after-source-change flow and watch-point updates
+
+Still recommended:
+
+1. explicit unit test for source mtime stale detection
+2. explicit unit test for `.git/HEAD` stale detection
+3. explicit non-stale boundary test for equal timestamps
+
+## Deferred Work
+
+- hash-based stale detection for clock-skew or distributed environments
+- optional content-signature snapshots (for example, source tree hash)
+- proactive auto-refresh scheduling (current model is still request-driven)

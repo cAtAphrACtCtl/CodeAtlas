@@ -120,7 +120,7 @@ The symbol search path used exact scoring, but not exact-only filtering.
 
 ### Fix
 
-`packages/core/src/search/symbol-search-backend.ts` now treats `exact: true` as strict case-insensitive exact-name filtering.
+`src/core/search/symbol-search-backend.ts` now treats `exact: true` as strict case-insensitive exact-name filtering.
 
 ### Regression coverage
 

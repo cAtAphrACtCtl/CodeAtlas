@@ -306,8 +306,8 @@ Define explicit tiers of service quality:
 
 | Tier | Condition | Search Behavior |
 |------|-----------|-----------------|
-| **Full** | Active lexical backend ready, symbols ready | Lexical search and `find_symbol` both available |
-| **Lexical-only** | Active lexical backend ready, symbols pending/failed | Lexical search available, symbol search degraded |
+| **Full** | Active lexical backend ready, symbol extraction/enrichment completed | Lexical search available; enriched symbol metadata is current |
+| **Lexical-only** | Active lexical backend ready, symbols pending/failed | Lexical search and lexical-backed `find_symbol` available; enrichment data may be stale or partial |
 | **Fallback** | Configured lexical backend not active, fallback backend serving | Degraded lexical search via fallback backend |
 | **Unavailable** | No ready lexical backend can be confirmed | Search returns error or waits for a backend to become ready |
 
@@ -577,7 +577,7 @@ Based on the three focus areas, the recommended implementation order is:
 
 ## Open Questions
 
-- Lexical readiness should go active before symbol extraction finishes. CodeAtlas now persists `state: "ready"` with `symbolState: "indexing"` so `code_search` can use the new lexical backend while `find_symbol` remains gated on symbol readiness.
+- Lexical readiness should go active before symbol extraction finishes. CodeAtlas now persists `state: "ready"` with `symbolState: "indexing"` so `code_search` and lexical-backed `find_symbol` can run while enrichment extraction continues in the background.
 - What is the right `indexBuildTimeoutMs` default for large repos? (Candidate: 1800000ms = 30 min)
 - Should timing data be persisted across server restarts or treated as ephemeral?
 - Should `get_index_status` return timing history (last N refreshes) or only the most recent?

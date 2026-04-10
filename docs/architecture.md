@@ -60,11 +60,11 @@ Handled by:
 
 This layer maps stable external contracts to internal services. It should remain stable as internals evolve.
 
-## Package Layout
+## Source Layout
 
-The repository is split into three top-level packages.
+The repository is organized around a `src` tree with one npm workspace nested under `src/vscode-extension`.
 
-### `packages/core`
+### `src/core`
 
 Owns product logic and local persistence abstractions.
 
@@ -81,7 +81,7 @@ Includes:
 - index coordination
 - search services
 
-### `packages/mcp-server`
+### `src/mcp-server`
 
 Owns MCP transport only.
 
@@ -92,15 +92,36 @@ Includes:
 - MCP server registration
 - stdio bootstrap
 
-### `packages/vscode-extension`
+### `src/vscode-extension`
 
 Owns VS Code-specific command and UI integration.
 
 Includes:
 
 - command palette actions for repository discovery and registration
-- config file entry points
-- repository status display helpers
+- extension activation entry points
+- repository picker and command registration helpers
+
+### `tests`
+
+Owns unit and integration coverage.
+
+Includes:
+
+- backend selection and fallback tests
+- index coordinator lifecycle tests
+- MCP handler integration tests
+- refresh-after-source-change tests
+
+### `scripts`
+
+Owns operational scripts rather than product runtime logic.
+
+Includes:
+
+- Zoekt installation helpers
+- index migration tools
+- MCP functional review and refresh evaluation scripts
 
 ### Repository Registry
 
@@ -234,7 +255,7 @@ Lifecycle safety note:
 
 ## Structured Logging And Observability
 
-- Runtime and MCP diagnostics now go through a shared `Logger` abstraction in `packages/core`.
+- Runtime and MCP diagnostics now go through a shared `Logger` abstraction in `src/core`.
 - The logger emits structured `LogEvent` objects to pluggable sinks rather than mixing direct `console.error` calls with transport-specific logging styles.
 - The primary sink is a JSONL file sink backed by pino. This keeps machine-readable operational logs available for local inspection, automation, and MCP troubleshooting.
 - `logging.level` controls event verbosity for the configured sinks. The default runtime path writes structured logs to file rather than auto-mirroring them to stderr.
@@ -246,7 +267,7 @@ Lifecycle safety note:
 
 ### Readiness And Refresh Flow
 
-The current readiness path now distinguishes lexical readiness from stricter symbol readiness.
+The current readiness path is lexical-first for both `code_search` and `find_symbol`.
 
 ```mermaid
 flowchart TD
@@ -254,15 +275,15 @@ flowchart TD
   B --> C[state=stale; symbolState=stale]
 
   D[code_search] --> E[ensureLexicalReady]
-  I[find_symbol] --> J[ensureSymbolReady]
+  I[find_symbol] --> J[ensureLexicalReady]
 
   E -->|state=ready| F[Run lexical search]
   E -->|in-flight refresh exists| K[Await existing refresh]
   E -->|not_indexed/stale/error| L[refreshRepository]
 
-  J -->|state=ready and symbolState=ready| M[Run symbol search]
+  J -->|state=ready| M[Run symbol search]
   J -->|in-flight refresh exists| K
-  J -->|symbol not ready or lexical not ready| L
+  J -->|lexical not ready| L
 
   L --> N[Deduplicate concurrent refresh]
   N --> O[Write indexing/indexing status]
@@ -280,9 +301,9 @@ flowchart TD
 Notes:
 
 - `code_search` only requires lexical readiness and no longer blocks on stale or failed symbol state.
-- `find_symbol` still requires both lexical readiness and `symbolState=ready`.
+- `find_symbol` uses lexical readiness and no longer requires `symbolState=ready`.
 - `refreshRepository` is shared across concurrent callers for the same repository.
-- `markRepositoryStale` exists now as the explicit stale transition, but automatic repository change detection is still future work.
+- `markRepositoryStale` request-driven stale detection is implemented via watch points; proactive background auto-refresh remains future work..
 
 Query flow:
 
@@ -471,7 +492,7 @@ Agents should treat Zoekt-backed lexical search as the primary retrieval path in
 
 When the agent already knows an exact code symbol name:
 
-- use `find_symbol` as an optional helper when working in the currently supported TS and JS symbol path
+- use `find_symbol` as an optional helper for definition-oriented lookup via the lexical-backed symbol path
 - use `read_source` to ground the result in nearby code
 - use lexical search afterward only when the agent needs usages, related strings, or broader textual evidence
 
@@ -491,7 +512,6 @@ When the agent only has a vague natural-language intent:
 - lexical retrieval is the highest-confidence active path today
 - semantic retrieval does not replace lexical retrieval; it remains deferred work rather than an active capability
 - symbol retrieval is currently an optional helper rather than the primary product focus
-- lexical retrieval remains the highest-confidence path for exact text matching
 - hybrid retrieval should combine semantic recall with lexical and symbol verification rather than bypassing those layers
 
 ## Large Repository Considerations

@@ -10,7 +10,7 @@ Current phase view:
 | --- | --- |
 | Completed | Local repository registration, metadata, repository-scoped refresh, `code_search`, `read_source`, stable MCP tool contracts, Zoekt backend integration, per-repository Zoekt index isolation, and explicit `not_indexed` / `indexing` / `ready` / `stale` / `error` states are in place. |
 | In progress | Zoekt hardening is the current mainline: large-repository validation, refresh-after-update correctness, readiness and fallback diagnostics, and evaluation of the experimental TS/JS `find_symbol` path. |
-| Not started or deferred | Refresh queueing and concurrency control, automatic stale detection, artifact cleanup and recovery flows, repeatable benchmark and regression gates, and real `semantic_search` / `hybrid_search` implementations are still ahead. |
+| Not started or deferred | Refresh queueing and concurrency control, artifact cleanup and recovery flows, repeatable benchmark and regression gates, and real `semantic_search` / `hybrid_search` implementations are still ahead. |
 | Risks and decisions | The project still needs proof that Zoekt refresh stays correct after repository updates, clear rules for when ripgrep fallback is acceptable, isolated measurement of symbol extraction cost, and a keep / limit / remove decision for custom symbol indexing. |
 
 ## Top 3 priorities now
@@ -20,7 +20,7 @@ Current phase view:
    - Measure initial indexing time, repeated refresh time, and query latency.
    - Verify MCP behavior when indexes are old, refreshing, or unavailable.
 2. Harden freshness, fallback, and operator-visible status.
-   - [~] Decide how repository updates mark an index stale before the next refresh.
+  - [x] Decide how repository updates mark an index stale before the next refresh.
      - **Implementation**: Watch points captured after successful refresh (`sourceRootMtime`, `gitHeadMtime`). If source root mtime is newer or .git/HEAD is newer than `lastIndexedAt`, marked stale with reason `repository_source_changed`. Deferred: hash-based staleness for Phase 3 / production.
    - [ ] Keep the last successful lexical index available while a refresh is running.
    - [ ] Document when ripgrep fallback is acceptable versus a hard failure.
@@ -45,7 +45,7 @@ Started now:
 
 - [x] Make repository status explicit for `not_indexed`, `indexing`, `ready`, `stale`, and `error`.
 - [x] Distinguish lexical readiness from symbol readiness in metadata and MCP-visible status.
-- [ ] Decide how repository updates mark an index stale before the next refresh.
+- Covered in the main priorities section: repository updates now mark an index `stale` before the next refresh.
 - [ ] Keep the last successful lexical index available while a refresh is running.
 
 ## Zoekt integration
