@@ -1,5 +1,8 @@
 # CodeAtlas
 
+**I want to restart the project. Please check another repo.
+https://github.com/cAtAphrACtCtl/CodeAtlas2**
+
 CodeAtlas is a local-first code retrieval platform for GitHub Copilot and other MCP clients.
 
 The current project focus is Zoekt-backed lexical retrieval, repository-scoped indexing, and reliable refresh behavior after repository updates. `find_symbol` is available today through a lexical-backed query flow with snippet-based symbol inference; background TypeScript and JavaScript symbol extraction remains enabled as an experimental enrichment path under evaluation. `semantic_search` and `hybrid_search` remain reserved placeholder contracts rather than active implementation work. See [docs/roadmap.md](docs/roadmap.md) for detailed phase status.
